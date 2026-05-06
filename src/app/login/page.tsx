@@ -1,26 +1,50 @@
-import { login, signup } from './actions'
+'use client'
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams: { error?: string }
-}) {
+import { useState } from 'react'
+import { login } from './actions'
+import { Eye, EyeOff } from 'lucide-react'
+
+export default function LoginPage() {
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin(formData: FormData) {
+    setLoading(true)
+    setError(null)
+    try {
+      await login(formData)
+    } catch (e: unknown) {
+      // redirect throws - if it's a redirect error, let it pass
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!msg.includes('NEXT_REDIRECT')) {
+        setError('Codici non validi. Riprova.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-zinc-950 text-white px-4">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#F8F9FA] px-4">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-lg">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-white">Accesso Piattaforma</h1>
-          <p className="mt-2 text-sm text-zinc-400">Inserisci le tue credenziali per continuare</p>
+          <div className="mx-auto mb-4 flex items-center justify-center">
+            <img src="/logo.jpg" alt="AI2 Logo" className="h-16 w-auto object-contain" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Accesso Piattaforma</h1>
+          <p className="mt-2 text-sm text-slate-500">Inserisci le tue credenziali per continuare</p>
         </div>
-        
-        <form className="space-y-6">
-          {searchParams.error && (
-            <div className="rounded-md bg-red-500/10 p-3 text-center text-sm text-red-500 border border-red-500/20">
-              Errore: Codici non validi o errore di sistema.
+
+        <form action={handleLogin} className="space-y-6">
+          {error && (
+            <div className="rounded-md bg-red-50 p-3 text-center text-sm text-red-600 border border-red-200">
+              {error}
             </div>
           )}
+
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
               Codice 1
             </label>
             <div className="mt-2">
@@ -29,38 +53,42 @@ export default function LoginPage({
                 name="email"
                 type="text"
                 required
-                className="block w-full rounded-md border-0 bg-zinc-950 py-2 text-white shadow-sm ring-1 ring-inset ring-zinc-800 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6 px-3 transition-shadow"
+                autoComplete="off"
+                className="block w-full rounded-md border border-slate-300 bg-white py-2 text-slate-900 shadow-sm focus:ring-2 focus:ring-[#D32F2F] focus:border-[#D32F2F] sm:text-sm px-3 transition-all outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
               Codice 2
             </label>
-            <div className="mt-2">
+            <div className="mt-2 relative">
               <input
                 id="password"
                 name="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
-                className="block w-full rounded-md border-0 bg-zinc-950 py-2 text-white shadow-sm ring-1 ring-inset ring-zinc-800 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6 px-3 transition-shadow"
+                className="block w-full rounded-md border border-slate-300 bg-white py-2 text-slate-900 shadow-sm focus:ring-2 focus:ring-[#D32F2F] focus:border-[#D32F2F] sm:text-sm px-3 pr-10 transition-all outline-none"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-700 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="pt-2">
             <button
-              formAction={login}
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors"
+              type="submit"
+              disabled={loading}
+              className="flex w-full justify-center rounded-md bg-[#D32F2F] px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#b02727] disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D32F2F] transition-colors"
             >
-              Accedi
-            </button>
-            <button
-              formAction={signup}
-              className="flex w-full justify-center rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-zinc-800 transition-colors"
-            >
-              Registrati (Solo Admin)
+              {loading ? 'Accesso in corso...' : 'Accedi'}
             </button>
           </div>
         </form>

@@ -1,9 +1,9 @@
-Azienda;99;Sede;0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+Azienda;1;Sede;0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Anno;2026;Mese;4;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30
 Matricola;Cognome e nome;Tipo;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore
-6;COGNOME NOME - CF;Ore lavorate;2;2;2;;;;2;2;2;2;;;2;2;2;2;2;;;2;2;2;2;2;;;2;2;2;2
+6;COGNOME NOME - CF;Ore lavorate;8;8;8;;;;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8
 ;;di cui notturne;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Causale 1;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Ore;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -68,7 +68,7 @@ Matricola;Cognome e nome;Tipo;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Ore;Or
 ;;Causale 5;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Ore;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Turno;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-15;AMATUCCI ANDREA - MTCNDR76M30A462O;Ore lavorate;8;8;8;;;;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8
+15;COGNOME NOME - CF;Ore lavorate;8;8;8;;;;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8;8;;;8;8;8;8
 ;;di cui notturne;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Causale 1;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;Ore;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
