@@ -1,16 +1,16 @@
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { redirect } from 'next/navigation'
-import { UploadCloud, Users, Settings, LogOut } from 'lucide-react'
+import { UploadCloud, Users, Settings, LogOut, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import ClientPage from './ClientPage'
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string }>
+  searchParams: Promise<{ id?: string, impersonate?: string }>
 }) {
-  const { id } = await searchParams
+  const { id, impersonate } = await searchParams
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
 
@@ -18,22 +18,29 @@ export default async function DashboardPage({
     redirect('/login')
   }
 
-  // Fetch role from profiles table
-  let role = 'client'
-  const { data: profile, error: profileError } = await supabase
+  // 1. Fetch current user role
+  const { data: myProfile } = await supabase
     .from('profiles')
     .select('role')
-    .eq('id', user!.id)
+    .eq('id', user.id)
     .single()
 
-  if (profileError) {
-    console.error('Profile fetch error:', profileError)
-  } else if (profile?.role) {
-    role = profile.role
-  }
+  const isAdmin = myProfile?.role === 'super_admin'
+  
+  // 2. Determine if we are impersonating a client
+  const isImpersonating = isAdmin && impersonate
+  const effectiveUserId = isImpersonating ? impersonate : user.id
 
-  // Admin View
-  if (role === 'super_admin') {
+  // 3. Fetch target profile data (for HQ info, etc.)
+  const admin = createAdminClient()
+  const { data: targetProfile } = await admin
+    .from('profiles')
+    .select('role, provincia, comune, indirizzo, numero_sede, email, is_edile')
+    .eq('id', effectiveUserId)
+    .single()
+
+  // 4. Admin Landing Page (if not impersonating)
+  if (isAdmin && !impersonate) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-8">
@@ -85,25 +92,24 @@ export default async function DashboardPage({
     )
   }
 
-  // Client View
-  const admin = createAdminClient()
+  // 5. Client View (Self or Impersonated)
   
-  // 1. Fetch all fogli for the dashboard list
+  // 5a. Fetch all fogli for the dashboard list
   const { data: fogli } = await admin
     .from('fogli_presenza')
     .select('id, azienda, anno, mese, status')
-    .eq('client_id', user.id)
+    .eq('client_id', effectiveUserId)
     .order('anno', { ascending: false })
     .order('mese', { ascending: false })
 
-  // 2. If a specific foglio is selected, fetch its full data
+  // 5b. If a specific foglio is selected, fetch its full data
   let selectedFoglioData = null
   if (id) {
     const { data: foglio } = await admin
       .from('fogli_presenza')
       .select('*')
       .eq('id', id)
-      .eq('client_id', user.id) // Security check
+      .eq('client_id', effectiveUserId) 
       .single()
 
     if (foglio) {
@@ -120,12 +126,50 @@ export default async function DashboardPage({
         })
       )
       selectedFoglioData = { ...foglio, dipendenti: dipendentiConDati }
+
+      // Fetch CIG fasi lavorative per questo foglio
+      const { data: cigFasi } = await admin
+        .from('cig_fasi_lavorative')
+        .select('cantiere_cod, fase_lavorativa')
+        .eq('foglio_id', foglio.id)
+      
+      selectedFoglioData = { ...foglio, dipendenti: dipendentiConDati, cigFasi: cigFasi || [] }
+
     }
   }
+
+  // 5c. Fetch cantieri
+  const { data: cantieri } = await admin
+    .from('cantieri')
+    .select('*')
+    .eq('client_id', effectiveUserId)
+    .order('created_at', { ascending: false })
+
+  // 5d. Fetch all operative locations (sedi)
+  const { data: additionalSedi } = await admin
+    .from('sedi')
+    .select('*')
+    .eq('client_id', effectiveUserId)
+    .order('numero', { ascending: true })
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans">
       <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="mb-6 bg-red-600 text-white px-6 py-3 rounded-2xl flex items-center justify-between shadow-lg animate-pulse">
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="h-5 w-5" />
+              <span className="text-sm font-bold uppercase tracking-wider">Modalità Supporto Admin Attiva</span>
+              <span className="text-xs bg-white/20 px-2 py-0.5 rounded ml-2">Stai operando per conto di: {targetProfile?.email}</span>
+            </div>
+            <Link href="/admin/clients" className="text-xs font-bold bg-white text-red-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+              Torna alla Gestione
+            </Link>
+          </div>
+        )}
+
         <header className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-6 gap-4">
           <div className="flex items-center gap-4">
             <img src="/logo.jpg" alt="AI2 Logo" className="h-12 w-auto object-contain" />
@@ -137,8 +181,10 @@ export default async function DashboardPage({
           
           <div className="flex items-center gap-4 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
              <div className="flex flex-col text-right px-2">
-                <span className="text-sm font-semibold text-slate-900">{user.email}</span>
-                <span className="text-xs text-[#D32F2F] font-bold uppercase tracking-wider">Cliente</span>
+                <span className="text-sm font-semibold text-slate-900">{isImpersonating ? targetProfile?.email : user.email}</span>
+                <span className={`text-xs font-bold uppercase tracking-wider ${isImpersonating ? 'text-red-600' : 'text-[#D32F2F]'}`}>
+                  {isImpersonating ? 'Impersonificazione' : 'Cliente'}
+                </span>
              </div>
              <div className="h-8 w-px bg-slate-200"></div>
              <form action="/auth/signout" method="post">
@@ -151,9 +197,12 @@ export default async function DashboardPage({
 
         <main>
           <ClientPage 
-            userEmail={user.email!} 
+            userEmail={isImpersonating ? targetProfile?.email! : user.email!} 
             fogli={fogli || []} 
             selectedFoglioData={selectedFoglioData}
+            profile={targetProfile}
+            cantieri={cantieri || []}
+            additionalSedi={additionalSedi || []}
           />
         </main>
       </div>

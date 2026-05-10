@@ -67,8 +67,8 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     const matricola = String(row[0] || '').trim()
     const rawNome = String(row[1] || '').trim()
 
-    // Skip empty rows
-    if (!matricola && !rawNome) {
+    // Skip empty rows or header repetitions
+    if ((!matricola && !rawNome) || matricola.toLowerCase().includes('matricola') || rawNome.toLowerCase().includes('cognome')) {
       i++
       continue
     }
@@ -78,22 +78,41 @@ export function parseGisCsv(csvText: string): FoglioParsed {
       ? rawNome.split(' - ')[0].trim()
       : rawNome
 
-    // Read 13 rows for this employee
-    const TIPO_ROWS = [
-      'Ore lavorate',
+    // Read rows for this employee until we hit a new employee or end of file
+    // Each employee block should contain specific row types
+    const expectedTypes = [
+      'ore lavorate',
       'di cui notturne',
-      'Causale 1', 'Ore',
-      'Causale 2', 'Ore',
-      'Causale 3', 'Ore',
-      'Causale 4', 'Ore',
-      'Causale 5', 'Ore',
-      'Turno',
+      'causale 1', 'ore',
+      'causale 2', 'ore',
+      'causale 3', 'ore',
+      'causale 4', 'ore',
+      'causale 5', 'ore',
+      'turno'
     ]
 
-    // Gather the block (current row is "Ore lavorate")
-    const block: string[][] = []
-    for (let b = 0; b < TIPO_ROWS.length && (i + b) < rows.length; b++) {
-      block.push(rows[i + b])
+    const block: Record<string, string[]> = {}
+    let rowsProcessed = 0
+    
+    // Peek ahead to gather rows for this employee block (max 20 rows to be safe)
+    for (let j = 0; j < 20 && (i + j) < rows.length; j++) {
+      const currentRow = rows[i + j]
+      const tipo = String(currentRow[2] || '').trim().toLowerCase()
+      
+      // If we see a new matricola (and it's not the current one) or a header, we stop
+      if (j > 0 && currentRow[0] && String(currentRow[0]).trim() !== matricola) break
+      if (j > 0 && String(currentRow[0]).toLowerCase().includes('matricola')) break
+
+      if (tipo) {
+        block[tipo] = currentRow
+      }
+      rowsProcessed = j + 1
+    }
+
+    // Validate block has at least 'ore lavorate'
+    if (!block['ore lavorate']) {
+      i += rowsProcessed || 1
+      continue
     }
 
     // Parse days 1..31 (columns index 3..33)
@@ -102,21 +121,36 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     for (let g = 1; g <= 31; g++) {
       const colIdx = 3 + (g - 1) // col 3 = giorno 1
 
-      const oreLav = parseFloat(String(block[0]?.[colIdx] || '').trim())
-      const oreNot = parseFloat(String(block[1]?.[colIdx] || '').trim())
-      const turno = String(block[12]?.[colIdx] || '').trim() || null
+      const oreLav = parseFloat(String(block['ore lavorate']?.[colIdx] || '').trim())
+      const oreNot = parseFloat(String(block['di cui notturne']?.[colIdx] || '').trim())
+      const turno = String(block['turno']?.[colIdx] || '').trim() || null
 
       const causali: DipendenteParsed['giorni'][number]['causali'] = []
-      for (let c = 0; c < 5; c++) {
-        const causaleRowIdx = 2 + c * 2     // Causale N row in block
-        const oreRowIdx = 3 + c * 2         // Ore row in block
-        const codice = String(block[causaleRowIdx]?.[colIdx] || '').trim() || null
-        const ore = parseFloat(String(block[oreRowIdx]?.[colIdx] || '').trim())
+      for (let c = 1; c <= 5; c++) {
+        const codice = String(block[`causale ${c}`]?.[colIdx] || '').trim() || null
+        // The 'Ore' row might be generic 'ore' multiple times or 'ore' following each causale
+        // In the GIS format, it's usually: Causale 1, Ore, Causale 2, Ore...
+        // Our 'block' mapping might overwrite 'ore' if we use it as key.
+        // Let's check the original rows for 'ore' relative to the causale row.
+        
+        // Find the index of the 'Causale X' row in the original rows to find the 'Ore' row right after it
+        let oreVal = null
+        for (let rIdx = 0; rIdx < rowsProcessed; rIdx++) {
+          const rowText = String(rows[i + rIdx][2] || '').toLowerCase()
+          if (rowText === `causale ${c}`) {
+            const nextRow = rows[i + rIdx + 1]
+            if (nextRow && String(nextRow[2] || '').toLowerCase() === 'ore') {
+              const rawOre = String(nextRow[colIdx] || '').trim()
+              oreVal = parseFloat(rawOre)
+            }
+            break
+          }
+        }
 
         causali.push({
-          numero: c + 1,
+          numero: c,
           codice,
-          ore: isNaN(ore) ? null : ore,
+          ore: (oreVal !== null && !isNaN(oreVal)) ? oreVal : null,
         })
       }
 
@@ -129,7 +163,7 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     }
 
     dipendenti.push({ matricola, cognomeNome, giorni })
-    i += TIPO_ROWS.length
+    i += rowsProcessed
   }
 
   return { azienda, sede, anno, mese, dipendenti }

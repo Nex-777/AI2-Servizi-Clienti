@@ -1,6 +1,6 @@
 {
   "name": "gis-app",
-  "version": "1.0.37",
+  "version": "1.0.40",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,14 +9,18 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "italian-cap-comuni-province": "^1.1.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "papaparse": "^5.5.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "resend": "^6.12.2"
+    "react-hook-form": "^7.75.0",
+    "resend": "^6.12.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -42,37 +42,63 @@ export async function uploadMultipleCsv(formData: FormData): Promise<UploadResul
 
   for (const file of files) {
     const filename = file.name
+    const csvText = await file.text()
 
-    // 1. Parse filename
-    const parsed = parseFilename(filename)
-    if (!parsed) {
-      results.push({ filename, status: 'error', message: 'Nome file non nel formato PRE...' })
+    // 1. Try to parse CSV content first to get metadata
+    let csvParsed
+    try {
+      csvParsed = parseGisCsv(csvText)
+    } catch (e: unknown) {
+      results.push({ filename, status: 'error', message: `Errore parsing CSV: ${e instanceof Error ? e.message : String(e)}` })
       continue
     }
 
-    // 2. Find client by numero_ditta
-    const { data: clientProfile } = await admin
+    // 2. Determine metadata (prioritize CSV content, fallback to filename)
+    let numeroDitta = csvParsed.azienda
+    let anno = csvParsed.anno
+    let mese = csvParsed.mese
+
+    if (!numeroDitta || !anno || !mese) {
+      const parsed = parseFilename(filename)
+      if (parsed) {
+        numeroDitta = numeroDitta || parsed.numeroDitta
+        anno = anno || parsed.anno
+        mese = mese || parsed.mese
+      }
+    }
+
+    if (!numeroDitta || !anno || !mese || isNaN(anno) || isNaN(mese)) {
+      results.push({ 
+        filename, 
+        status: 'error', 
+        message: 'Impossibile rilevare N° ditta, anno o mese dal contenuto o dal nome file.' 
+      })
+      continue
+    }
+
+    // 3. Find client by numero_ditta (try exact match, then padded with zeros)
+    let { data: clientProfile } = await admin
       .from('profiles')
       .select('id, email')
-      .eq('numero_ditta', parsed.numeroDitta)
-      .single()
+      .eq('numero_ditta', numeroDitta)
+      .maybeSingle()
+
+    if (!clientProfile && numeroDitta.length < 6) {
+      const padded = numeroDitta.padStart(6, '0')
+      const { data: paddedProfile } = await admin
+        .from('profiles')
+        .select('id, email')
+        .eq('numero_ditta', padded)
+        .maybeSingle()
+      clientProfile = paddedProfile
+    }
 
     if (!clientProfile) {
       results.push({
         filename,
         status: 'no_client',
-        message: `Nessun cliente con N° ditta ${parsed.numeroDitta}`,
+        message: `Nessun cliente con N° ditta ${numeroDitta}`,
       })
-      continue
-    }
-
-    // 3. Parse CSV content
-    const csvText = await file.text()
-    let csvParsed
-    try {
-      csvParsed = parseGisCsv(csvText)
-    } catch (e: unknown) {
-      results.push({ filename, status: 'error', message: `Errore parsing: ${e instanceof Error ? e.message : String(e)}` })
       continue
     }
 
@@ -81,17 +107,17 @@ export async function uploadMultipleCsv(formData: FormData): Promise<UploadResul
       .from('fogli_presenza')
       .delete()
       .eq('client_id', clientProfile.id)
-      .eq('anno', parsed.anno)
-      .eq('mese', parsed.mese)
-
+      .eq('anno', anno)
+      .eq('mese', mese)
+ 
     const { data: foglio, error: foglioError } = await admin
       .from('fogli_presenza')
       .insert({
         client_id: clientProfile.id,
-        azienda: csvParsed.azienda || parsed.numeroDitta,
+        azienda: csvParsed.azienda || numeroDitta,
         sede: csvParsed.sede,
-        anno: parsed.anno,
-        mese: parsed.mese,
+        anno: anno,
+        mese: mese,
         status: 'bozza',
       })
       .select('id')
@@ -121,6 +147,7 @@ export async function uploadMultipleCsv(formData: FormData): Promise<UploadResul
         .map(([giorno, g]) => ({
           dipendente_id: dipRecord.id,
           giorno: parseInt(giorno, 10),
+          ore_contrattuali: g.oreLavorate,
           ore_lavorate: g.oreLavorate,
           ore_notturne: g.oreNotturne,
           turno: g.turno,
@@ -157,5 +184,7 @@ export async function uploadMultipleCsv(formData: FormData): Promise<UploadResul
   }
 
   revalidatePath('/admin/fogli')
+  revalidatePath('/')
+  revalidatePath('/[id]', 'page')
   return results
 }

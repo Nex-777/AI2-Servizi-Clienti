@@ -47,6 +47,7 @@ export async function confirmAndSend(foglioId: string) {
       // Build giorni map
       const giorni: Record<number, {
         oreLavorate: number | null
+        ore_contrattuali: number | null
         oreNotturne: number | null
         turno: string | null
         causali: Array<{ numero: number; codice: string | null; ore: number | null }>
@@ -58,7 +59,7 @@ export async function confirmAndSend(foglioId: string) {
 
         giorni[g] = {
           oreLavorate: giornata?.ore_lavorate ?? null,
-          ore_contrattuali: giornata?.ore_teoriche ?? null,
+          ore_contrattuali: giornata?.ore_contrattuali ?? null,
           oreNotturne: giornata?.ore_notturne ?? null,
           turno: giornata?.turno ?? null,
           causali: [1, 2, 3, 4, 5].map(n => {
@@ -142,32 +143,32 @@ export async function saveCausale(formData: FormData) {
   const oreRaw = formData.get('ore') as string
   const oreNum = (oreRaw && !isNaN(parseFloat(oreRaw))) ? parseFloat(oreRaw) : null
 
-  // Fetch giornate to cap hours based on ordinary hours (ore_teoriche)
+  // Fetch giornate to cap hours based on ordinary hours (ore_contrattuali)
   const { data: giornate } = await admin
     .from('giornate')
-    .select('giorno, ore_lavorate, ore_teoriche')
+    .select('giorno, ore_lavorate, ore_contrattuali')
     .eq('dipendente_id', dipendente_id)
     .gte('giorno', giorno)
     .lte('giorno', alGiorno)
 
-  const giornateMap = new Map((giornate || []).map(g => [g.giorno, { lavorate: g.ore_lavorate, teoriche: g.ore_teoriche }]))
+  const giornateMap = new Map((giornate || []).map(g => [g.giorno, { lavorate: g.ore_lavorate, contrattuali: g.ore_contrattuali }]))
 
   const upserts = []
   for (let g = giorno; g <= alGiorno; g++) {
     let finalOre = oreNum
     const info = giornateMap.get(g)
-    const oreTeoriche = info?.teoriche ?? 0
+    const oreContrattuali = info?.contrattuali ?? 0
     
     // Skip range duplicates on days with no theoretical ordinary hours (e.g. weekends)
     if (alGiorno > giorno && codice) {
-      if (oreTeoriche <= 0) {
+      if (oreContrattuali <= 0) {
         continue
       }
     }
 
     // Cap the hours to the maximum theoretical ordinary hours for that day
     if (codice && finalOre !== null) {
-      finalOre = Math.min(finalOre, oreTeoriche)
+      finalOre = Math.min(finalOre, oreContrattuali)
     }
 
     upserts.push({
@@ -209,25 +210,39 @@ export async function saveGiornata(formData: FormData) {
   const alGiornoStr = formData.get('alGiorno') as string
   const alGiorno = alGiornoStr ? parseInt(alGiornoStr, 10) : giorno
   
-  const campo = formData.get('campo') as string // 'ore_lavorate' | 'ore_notturne'
+  const campo = formData.get('campo') as string // 'ore_lavorate' | 'ore_notturne' | 'turno'
   const valoreRaw = formData.get('valore') as string
-  const valore = (valoreRaw && !isNaN(parseFloat(valoreRaw))) ? parseFloat(valoreRaw) : null
+  const valore = campo === 'turno' ? (valoreRaw || null) : ((valoreRaw && !isNaN(parseFloat(valoreRaw))) ? parseFloat(valoreRaw) : null)
 
   if (!dipendente_id || !giorno || !campo) throw new Error('Dati mancanti')
 
   const admin = createAdminClient()
 
-  // Se stiamo modificando le ore lavorate, verifichiamo che non siano inferiori alle teoriche
+  // Se stiamo modificando le ore lavorate, verifichiamo che non siano inferiori alle contrattuali
   if (campo === 'ore_lavorate' && valore !== null) {
     const { data: current } = await admin
       .from('giornate')
-      .select('ore_teoriche')
+      .select('ore_contrattuali')
       .eq('dipendente_id', dipendente_id)
       .eq('giorno', giorno)
       .single()
     
-    if (current && current.ore_teoriche !== null && valore < current.ore_teoriche) {
-      throw new Error(`Non puoi inserire meno di ${current.ore_teoriche} ore (orario teorico).`)
+    if (current && current.ore_contrattuali !== null && valore < current.ore_contrattuali) {
+      throw new Error(`Per ridurre le ore lavorate usare i giustificativi.`)
+    }
+  }
+
+  // Se stiamo modificando le ore notturne, verifichiamo che non superino le lavorate
+  if (campo === 'ore_notturne' && valore !== null) {
+    const { data: current } = await admin
+      .from('giornate')
+      .select('ore_lavorate')
+      .eq('dipendente_id', dipendente_id)
+      .eq('giorno', giorno)
+      .single()
+    
+    if (current && current.ore_lavorate !== null && valore > current.ore_lavorate) {
+      throw new Error(`Le ore notturne non possono superare le ore lavorate (${current.ore_lavorate}h).`)
     }
   }
 

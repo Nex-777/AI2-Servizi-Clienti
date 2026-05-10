@@ -8,6 +8,12 @@ export async function createClientAccount(formData: FormData) {
   const codice1 = formData.get('codice1') as string
   const codice2 = formData.get('codice2') as string
   const numeroDitta = (formData.get('numero_ditta') as string)?.trim() || null
+  const numeroSede = formData.get('numero_sede') as string
+  const provincia = formData.get('provincia') as string
+  const comune = formData.get('comune') as string
+  const indirizzo = formData.get('indirizzo') as string
+  const isEdile = formData.get('is_edile') === 'true'
+  const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
   
   const email = `${codice1.toLowerCase().trim()}@gis-internal.com`
 
@@ -44,6 +50,12 @@ export async function createClientAccount(formData: FormData) {
       email: email,
       role: 'client',
       numero_ditta: numeroDitta,
+      numero_sede: numeroSede,
+      provincia,
+      comune,
+      indirizzo,
+      is_edile: isEdile,
+      lettera_identificativa: letteraIdentificativa,
     })
 
   if (profileError) {
@@ -67,4 +79,105 @@ export async function deleteClientAccount(userId: string) {
   await admin.from('profiles').delete().eq('id', userId)
 
   revalidatePath('/admin/clients')
+}
+
+export async function updateClientProfile(userId: string, formData: FormData) {
+  const admin = createAdminClient()
+  const numeroDitta = (formData.get('numero_ditta') as string)?.trim() || null
+  const numeroSede = formData.get('numero_sede') as string
+  const provincia = formData.get('provincia') as string
+  const comune = formData.get('comune') as string
+  const indirizzo = formData.get('indirizzo') as string
+  const isEdile = formData.get('is_edile') === 'true'
+  const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
+
+  const { error } = await admin
+    .from('profiles')
+    .update({
+      numero_ditta: numeroDitta,
+      numero_sede: numeroSede,
+      provincia,
+      comune,
+      indirizzo,
+      is_edile: isEdile,
+      lettera_identificativa: letteraIdentificativa,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/admin/clients')
+}
+
+export async function updateClientSede(userId: string, formData: FormData) {
+  const admin = createAdminClient()
+  const numeroSede = formData.get('numero_sede') as string
+  const provincia = formData.get('provincia') as string
+  const comune = formData.get('comune') as string
+  const indirizzo = formData.get('indirizzo') as string
+  const isEdile = formData.get('is_edile') === 'true'
+  const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
+
+  const { error } = await admin
+    .from('profiles')
+    .update({
+      numero_sede: numeroSede,
+      provincia,
+      comune,
+      indirizzo,
+      is_edile: isEdile,
+      lettera_identificativa: letteraIdentificativa,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/admin/clients')
+  revalidatePath(`/admin/clients/${userId}/sede`)
+  // Redirect back to client list or specific page to give feedback
+  const { redirect } = await import('next/navigation')
+  redirect('/admin/clients')
+}
+
+export async function addAdditionalSede(clientId: string, formData: FormData) {
+  const admin = createAdminClient()
+  
+  const data = {
+    client_id: clientId,
+    numero: formData.get('numero') as string,
+    provincia: formData.get('provincia') as string,
+    comune: formData.get('comune') as string,
+    indirizzo: formData.get('indirizzo') as string,
+  }
+
+  const { error } = await admin
+    .from('sedi')
+    .insert(data)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/admin/clients/${clientId}/sede`)
+}
+
+export async function deleteAdditionalSede(clientId: string, sedeId: string) {
+  const admin = createAdminClient()
+  
+  const { error } = await admin
+    .from('sedi')
+    .delete()
+    .eq('id', sedeId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/admin/clients/${clientId}/sede`)
 }

@@ -54,7 +54,7 @@ export default function UploadPage() {
                   {fileCount > 0 ? `${fileCount} file selezionati` : 'Clicca o trascina qui i file CSV'}
                 </span>
                 <span className="text-xs text-slate-400 mt-1">
-                  Formato: PRE000099XXXX202604.csv — più file simultaneamente
+                  Format consigliato: PRE... (N° ditta, anno, mese)
                 </span>
                 <input
                   id="csv_files"

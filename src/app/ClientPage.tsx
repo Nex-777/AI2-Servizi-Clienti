@@ -13,24 +13,35 @@ interface FoglioSummary {
 }
 
 export default function ClientPage({ 
-  userEmail, 
+  userEmail,
   fogli, 
-  selectedFoglioData 
+  selectedFoglioData,
+  profile,
+  cantieri,
+  additionalSedi
 }: { 
   userEmail: string
   fogli: FoglioSummary[]
   selectedFoglioData: any
+  profile: any
+  cantieri: any[]
+  additionalSedi: any[]
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const selectedId = searchParams.get('id')
 
   const handleSelectFoglio = (id: string) => {
-    router.push(`/?id=${id}`)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('id', id)
+    router.push(`/?${params.toString()}`)
   }
 
   const handleBack = () => {
-    router.push('/')
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('id')
+    const queryString = params.toString()
+    router.push(queryString ? `/?${queryString}` : '/')
   }
 
   if (selectedId && selectedFoglioData) {
@@ -43,9 +54,14 @@ export default function ClientPage({
         mese={selectedFoglioData.mese}
         status={selectedFoglioData.status}
         dipendenti={selectedFoglioData.dipendenti}
+        cantieri={cantieri}
+        additionalSedi={additionalSedi}
+        profile={profile}
+        cigFasi={selectedFoglioData.cigFasi || []}
         onBack={handleBack}
       />
     )
+
   }
 
   return (
@@ -53,6 +69,9 @@ export default function ClientPage({
       userEmail={userEmail} 
       fogli={fogli} 
       onSelectFoglio={handleSelectFoglio} 
+      profile={profile}
+      cantieri={cantieri}
+      additionalSedi={additionalSedi}
     />
   )
 }
