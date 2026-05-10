@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI2 - Servizi Clienti",
+  title: "Agenzia Italia 2 - Servizi Clienti",
   description: "Piattaforma professionale per la gestione dei servizi clienti AI2.",
 };
 

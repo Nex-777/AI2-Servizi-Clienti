@@ -624,7 +624,14 @@ function CausaleCell({
   }
 
   function handleClear() {
-    if (!confirm("Sei sicuro di voler cancellare questo giustificativo?")) return
+    if (typeof window !== 'undefined' && !window.confirm("Sei sicuro di voler cancellare questo giustificativo?")) return
+    
+    // Reset local state to clear the UI immediately
+    setCodice('')
+    setOre('')
+    setNote('')
+    setHasChanged(false)
+
     const fd = new FormData()
     fd.set('dipendente_id', dipendente_id)
     fd.set('giorno', String(giorno))
@@ -636,10 +643,16 @@ function CausaleCell({
 
     setOptimisticCodice('')
     setOptimisticOre('')
+    
+    // Close modal
     onToggle(false)
 
     startSave(async () => {
-      try { await saveCausale(fd) } catch {}
+      try { 
+        await saveCausale(fd) 
+      } catch (e) {
+        console.error("Clear error:", e)
+      }
     })
   }
 
@@ -786,7 +799,11 @@ function CausaleCell({
                 <div className="flex items-center justify-between pt-2">
                   {/* Tasto Cancella (Sinistra) */}
                   <button
-                    onClick={handleClear}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleClear()
+                    }}
                     title="Rimuovi questo giustificativo"
                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"
                   >
