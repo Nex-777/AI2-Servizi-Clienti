@@ -143,6 +143,25 @@ export async function saveCausale(formData: FormData) {
   const oreRaw = formData.get('ore') as string
   const oreNum = (oreRaw && !isNaN(parseFloat(oreRaw))) ? parseFloat(oreRaw) : null
 
+  // Se codice è null, l'utente sta richiedendo la cancellazione (handleClear)
+  if (!codice) {
+    // Gestisce anche l'eventuale range di giorni (alGiorno)
+    for (let g = giorno; g <= alGiorno; g++) {
+      const { error } = await admin
+        .from('causali')
+        .delete()
+        .eq('dipendente_id', dipendente_id)
+        .eq('giorno', g)
+        .eq('numero', numero)
+        
+      if (error) console.error("Error deleting causale:", error.message)
+    }
+    revalidatePath('/')
+    return
+  }
+
+  // Se c'è un codice, procediamo con l'inserimento/aggiornamento
+
   // Fetch giornate to cap hours based on ordinary hours (ore_contrattuali)
   const { data: giornate } = await admin
     .from('giornate')

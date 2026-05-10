@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect, useRef } from 'react'
 import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock } from 'lucide-react'
 
 import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata } from '@/app/actions/confirm'
@@ -111,6 +111,55 @@ const MESI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
+}
+
+// Calcolo festività nazionali italiane
+function isFestivo(anno: number, mese: number, giorno: number) {
+  const festiviFissi = [
+    { m: 1, d: 1 },   // Capodanno
+    { m: 1, d: 6 },   // Epifania
+    { m: 4, d: 25 },  // Liberazione
+    { m: 5, d: 1 },   // Lavoratori
+    { m: 6, d: 2 },   // Repubblica
+    { m: 8, d: 15 },  // Ferragosto
+    { m: 10, d: 4 },  // San Francesco d'Assisi (richiesto)
+    { m: 11, d: 1 },  // Ognissanti
+    { m: 12, d: 8 },  // Immacolata
+    { m: 12, d: 25 }, // Natale
+    { m: 12, d: 26 }, // S. Stefano
+  ]
+
+  const isFisso = festiviFissi.some(f => f.m === mese && f.d === giorno)
+  if (isFisso) return true
+
+  // Calcolo Pasqua (Algoritmo di Meeus/Jones/Butcher)
+  const a = anno % 19
+  const b = Math.floor(anno / 100)
+  const c = anno % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const pasquaMese = Math.floor((h + l - 7 * m + 114) / 31)
+  const pasquaGiorno = ((h + l - 7 * m + 114) % 31) + 1
+
+  // Pasquetta
+  let pasquettaMese = pasquaMese
+  let pasquettaGiorno = pasquaGiorno + 1
+  if (pasquettaGiorno > getDaysInMonth(anno, pasquaMese)) {
+    pasquettaGiorno = 1
+    pasquettaMese++
+  }
+
+  if (mese === pasquaMese && giorno === pasquaGiorno) return true
+  if (mese === pasquettaMese && giorno === pasquettaGiorno) return true
+
+  return false
 }
 
 // Inline editable giornata cell for ordinary and night hours
@@ -531,9 +580,19 @@ function CausaleCell({
   const [cigStep, setCigStep] = useState<1 | 2>(1)
   const [cigCodice, setCigCodice] = useState('')
   const [cigMeteo, setCigMeteo] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isClearedDisplay, setIsClearedDisplay] = useState(false)
+  const isClearingRef = useRef(false)
 
   // Detect if currently displaying a CIG code
   const isCigCode = (c: string) => (CIG_CODES as readonly string[]).includes(c)
+
+  // Once the server confirms the cell is empty, stop hiding it
+  useEffect(() => {
+    if (isClearedDisplay && !initial.codice) {
+      setIsClearedDisplay(false)
+    }
+  }, [initial.codice, isClearedDisplay])
 
   useEffect(() => {
     if (codice !== (initial.codice || '') || ore !== (initial.ore !== null ? String(initial.ore) : '')) {
@@ -543,12 +602,18 @@ function CausaleCell({
 
   useEffect(() => {
     if (!isActive) {
+      // Skip reset if we are in the middle of a clear operation
+      if (isClearingRef.current) {
+        isClearingRef.current = false
+        return
+      }
       setCodice(initial.codice || '')
       setOre(initial.ore !== null ? String(initial.ore) : '')
       setNote(initial.note || '')
       setCigStep(1)
       setCigCodice('')
       setCigMeteo('')
+      setShowDeleteConfirm(false)
     }
   }, [initial.codice, initial.ore, initial.note, isActive])
 
@@ -624,14 +689,30 @@ function CausaleCell({
   }
 
   function handleClear() {
-    if (typeof window !== 'undefined' && !window.confirm("Sei sicuro di voler cancellare questo giustificativo?")) return
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true)
+      return
+    }
     
+    // Set the flag BEFORE calling onToggle to prevent the reset useEffect from overwriting our clear
+    isClearingRef.current = true
+    setIsClearedDisplay(true)  // Keep cell visually empty until server confirms
+
     // Reset local state to clear the UI immediately
     setCodice('')
     setOre('')
     setNote('')
     setHasChanged(false)
+    setShowDeleteConfirm(false)
 
+    // Also clear optimistic state
+    setOptimisticCodice('')
+    setOptimisticOre('')
+    
+    // Close modal
+    onToggle(false)
+
+    // Delete on server
     const fd = new FormData()
     fd.set('dipendente_id', dipendente_id)
     fd.set('giorno', String(giorno))
@@ -640,12 +721,6 @@ function CausaleCell({
     fd.set('ore', '')
     fd.set('note', '')
     fd.set('alGiorno', String(giorno))
-
-    setOptimisticCodice('')
-    setOptimisticOre('')
-    
-    // Close modal
-    onToggle(false)
 
     startSave(async () => {
       try { 
@@ -666,8 +741,8 @@ function CausaleCell({
   }
 
   const isOptimistic = (optimisticCodice !== null || optimisticOre !== null) && saving
-  const currentCodice = isOptimistic ? optimisticCodice : (initial.codice || '')
-  const currentOre = isOptimistic ? optimisticOre : (initial.ore ? String(initial.ore) : '')
+  const currentCodice = isClearedDisplay ? '' : (isOptimistic ? optimisticCodice : (initial.codice || ''))
+  const currentOre = isClearedDisplay ? '' : (isOptimistic ? optimisticOre : (initial.ore ? String(initial.ore) : ''))
   const cellStyle = getCausaleStyle(currentCodice)
   const giustificativi = getGiustificativi(isEdile)
 
@@ -804,11 +879,22 @@ function CausaleCell({
                       e.stopPropagation()
                       handleClear()
                     }}
-                    title="Rimuovi questo giustificativo"
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"
+                    onMouseLeave={() => setShowDeleteConfirm(false)}
+                    title={showDeleteConfirm ? "Conferma cancellazione" : "Rimuovi questo giustificativo"}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all border ${
+                      showDeleteConfirm 
+                        ? 'bg-red-600 text-white border-red-700 shadow-inner' 
+                        : 'text-red-500 border-red-100 hover:text-red-700 hover:bg-red-50'
+                    }`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Cancella
+                    {showDeleteConfirm ? (
+                      <>Sei sicuro?</>
+                    ) : (
+                      <>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Cancella
+                      </>
+                    )}
                   </button>
 
                   <div className="flex gap-2">
@@ -1094,11 +1180,22 @@ function DipendenteSection({
                 {days.map(d => {
                   const date = new Date(anno, mese - 1, d)
                   const isDomenica = date.getDay() === 0
+                  const isF = isFestivo(anno, mese, d)
                   const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
+                  
+                  // Colore testo: Rosso se domenica, Giallo (Stitch Yellow-400) se festivo feriale, Bianco altrimenti
+                  let textColor = 'text-white'
+                  if (isDomenica) textColor = 'text-red-400'
+                  else if (isF) textColor = 'text-yellow-400'
+
                   return (
-                    <th key={d} className={`px-0.5 py-1 text-center min-w-[35px] border-l border-slate-600 leading-tight ${isDomenica ? 'text-red-400' : 'text-white'}`}>
+                    <th key={d} className={`px-0.5 py-1 text-center min-w-[35px] border-l border-slate-600 leading-tight relative ${textColor}`}>
                       <div className="text-[10px] font-bold">{d}</div>
                       <div className="text-[9px] opacity-80 font-medium">{dayName}</div>
+                      {/* Se è festivo di domenica, aggiungiamo un indicatore (puntino giallo sotto) */}
+                      {isDomenica && isF && (
+                        <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-yellow-400 rounded-full shadow-[0_0_4px_rgba(250,204,21,0.8)]" />
+                      )}
                     </th>
                   )
                 })}
@@ -1532,13 +1629,21 @@ function CigCantiereCard({
               {days.map(d => {
                 const date = new Date(anno, mese - 1, d)
                 const isDomenica = date.getDay() === 0
+                const isF = isFestivo(anno, mese, d)
                 const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
+                
+                let cellClass = activeDays.has(d) ? 'bg-yellow-100 text-yellow-800' : 'text-slate-400'
+                if (isDomenica) cellClass = 'bg-red-50 text-red-600'
+                else if (isF) cellClass = 'bg-yellow-50 text-yellow-600'
+
                 return (
-                  <td key={d} className={`${colW} text-center py-0.5 font-bold border-r border-slate-200 leading-tight ${
-                    isDomenica ? 'bg-red-50 text-red-600' : activeDays.has(d) ? 'bg-yellow-100 text-yellow-800' : 'text-slate-400'
-                  }`}>
+                  <td key={d} className={`${colW} text-center py-0.5 font-bold border-r border-slate-200 leading-tight relative ${cellClass}`}>
                     <div className="text-[10px]">{d}</div>
                     <div className="text-[8px] opacity-70">{dayName}</div>
+                    {/* Indicatore festivo su domenica */}
+                    {isDomenica && isF && (
+                      <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-yellow-500 rounded-full" />
+                    )}
                   </td>
                 )
               })}
