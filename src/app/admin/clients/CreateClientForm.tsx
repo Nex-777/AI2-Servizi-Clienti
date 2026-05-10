@@ -22,7 +22,17 @@ export default function CreateClientForm() {
       </h2>
       <form action={createClientAccount} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700">Codice 1</label>
+          <label className="block text-sm font-medium text-slate-700">Ragione Sociale</label>
+          <input 
+            name="ragione_sociale" 
+            type="text" 
+            required 
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#D32F2F] outline-none"
+            placeholder="Es. Agenzia Italia 2 Srl"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700">Codice 1 (User)</label>
           <input 
             name="codice1" 
             type="text" 
@@ -32,13 +42,13 @@ export default function CreateClientForm() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700">Codice 2</label>
+          <label className="block text-sm font-medium text-slate-700">Codice 2 (Password/P.IVA)</label>
           <input 
             name="codice2" 
             type="text" 
             required 
             className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#D32F2F] outline-none"
-            placeholder="Min. 6 caratteri"
+            placeholder="Es. 01234567890"
           />
         </div>
         <div>

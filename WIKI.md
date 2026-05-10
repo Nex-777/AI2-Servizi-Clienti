@@ -1,10 +1,15 @@
 # AI2 - Servizi Clienti | Project Wiki
 
 ## Stato del Progetto
-Versione Attuale: **v1.0.40**
-Ultimo Aggiornamento: 09/05/2026
+Versione Attuale: **v1.0.42**
+Ultimo Aggiornamento: 10/05/2026
 
 ## Progressi Raggiunti
+- [x] **Supporto Festività**: Implementata gestione automatica festività italiane (inclusa Pasqua/Pasquetta) con evidenziazione cromatica differenziata nel calendario.
+- [x] **Sicurezza Cancellazione**: Introdotta doppia conferma inline per la rimozione dei giustificativi per prevenire cancellazioni accidentali.
+- [x] **Evoluzione Admin**: Nuova interfaccia di gestione Clienti e Cantieri con supporto al caricamento massivo di file presenze via CSV.
+- [x] **Ottimizzazione Parser**: Migliorata l'accuratezza del parsing CSV per la corretta associazione di matricole e orari contrattuali.
+- [x] **Stabilità UI**: Affinata la gestione dello stato optimistic per garantire fluidità visiva durante le operazioni asincrone di salvataggio/reset.
 - [x] **Repository GitHub**: Creata e configurata repository ufficiale `Nex-777/AI2-Servizi-Clienti`.
 - [x] **Gestione Versioning**: Implementato sistema di tracking versione visibile in UI (layout) e sincronizzato con `package.json`.
 - [x] **Security & Secret Scanning**: Attivata protezione push per chiavi API e configurato `.gitignore` per escludere file di configurazione locali (`.claude`).
@@ -22,7 +27,7 @@ Ultimo Aggiornamento: 09/05/2026
 - [ ] **Verifica Dominio Resend**: 
     - [ ] Aggiungere record DNS su `agenziaitalia2.it`.
     - [ ] Abilitare invio a destinatari esterni (consulenti/ufficio paghe).
-    - [ ] Ripristinare `process.env.ADMIN_EMAIL` come destinatario dinamico.
+    - [ ] Ripristinare `process.env.ADMIN_EMAIL` as destinatario dinamico.
 - [ ] **Miglioramento UI Periodo**: Valutare se aggiungere un'anteprima dei giorni che verranno compilati nel range selezionato.
 
 ---

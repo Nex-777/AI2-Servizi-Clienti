@@ -11,7 +11,7 @@ const MESI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
 
 // Called when client clicks "Conferma e Invia"
 export async function confirmAndSend(foglioId: string) {
-  const supabase = await createClient()
+  console.log(`[confirmAndSend] Avvio per foglioId: ${foglioId}`)
   const admin = createAdminClient()
 
   // 1. Fetch foglio
@@ -29,7 +29,12 @@ export async function confirmAndSend(foglioId: string) {
     .select('*')
     .eq('foglio_id', foglioId)
 
-  if (!dipendenti?.length) throw new Error('Nessun dipendente trovato')
+  if (!dipendenti?.length) {
+    console.error(`[confirmAndSend] Nessun dipendente trovato per foglioId: ${foglioId}`)
+    throw new Error('Nessun dipendente trovato')
+  }
+
+  console.log(`[confirmAndSend] Elaborazione dati per ${dipendenti.length} dipendenti`)
 
   // 3. Fetch giornate + causali per ogni dipendente
   const dipendentiConDati = await Promise.all(
@@ -90,10 +95,9 @@ export async function confirmAndSend(foglioId: string) {
   const filename = `presenze_${foglio.azienda.replace(/\s+/g, '_')}_${nomeMese}_${foglio.anno}.csv`
 
   // 5. Send email via Resend
-  // NOTE: use onboarding@resend.dev until agenziaitalia2.it is verified in Resend dashboard
   const { error: emailError } = await resend.emails.send({
-    from: 'AI2 GIS <onboarding@resend.dev>',
-    to: ['nexglg@gmail.com'], // Temporaneamente nexglg@gmail.com per restrizioni Resend Sandbox
+    from: 'AI2 Servizi Clienti <notifiche@agenziaitalia2.it>',
+    to: [process.env.ADMIN_EMAIL || 'paoletti@agenziaitalia2.it'],
     subject: `Foglio Presenze - ${foglio.azienda} - ${nomeMese} ${foglio.anno}`,
     html: `
       <p>Il cliente ha confermato il foglio presenze.</p>
@@ -113,7 +117,12 @@ export async function confirmAndSend(foglioId: string) {
     ],
   })
 
-  if (emailError) throw new Error(`Errore invio email: ${emailError.message}`)
+  if (emailError) {
+    console.error(`[confirmAndSend] Errore Resend:`, emailError)
+    throw new Error(`Errore invio email: ${emailError.message}`)
+  }
+
+  console.log(`[confirmAndSend] Email inviata con successo. Aggiornamento stato foglio...`)
 
   // 6. Update status to confermato
   await admin
@@ -121,6 +130,7 @@ export async function confirmAndSend(foglioId: string) {
     .update({ status: 'confermato', confirmed_at: new Date().toISOString() })
     .eq('id', foglioId)
 
+  console.log(`[confirmAndSend] Foglio ${foglioId} confermato con successo.`)
   revalidatePath('/')
 }
 
@@ -141,12 +151,19 @@ export async function saveCausale(formData: FormData) {
   if (!dipendente_id || !giorno || !numero) throw new Error('Dati mancanti')
 
   const oreRaw = formData.get('ore') as string
+  const useMax = oreRaw === 'MAX'
   const oreNum = (oreRaw && !isNaN(parseFloat(oreRaw))) ? parseFloat(oreRaw) : null
+
+  const selectedDaysStr = formData.get('selectedDays') as string
+  const daysToUpdate = selectedDaysStr ? JSON.parse(selectedDaysStr) as number[] : []
+  if (daysToUpdate.length === 0) {
+    for (let g = giorno; g <= alGiorno; g++) daysToUpdate.push(g)
+  }
 
   // Se codice è null, l'utente sta richiedendo la cancellazione (handleClear)
   if (!codice) {
-    // Gestisce anche l'eventuale range di giorni (alGiorno)
-    for (let g = giorno; g <= alGiorno; g++) {
+    // Gestisce array di giorni o range
+    for (const g of daysToUpdate) {
       const { error } = await admin
         .from('causali')
         .delete()
@@ -162,31 +179,49 @@ export async function saveCausale(formData: FormData) {
 
   // Se c'è un codice, procediamo con l'inserimento/aggiornamento
 
-  // Fetch giornate to cap hours based on ordinary hours (ore_contrattuali)
+  // Fetch giornate to know worked hours (ore_lavorate) and theoretical (ore_contrattuali)
   const { data: giornate } = await admin
     .from('giornate')
     .select('giorno, ore_lavorate, ore_contrattuali')
     .eq('dipendente_id', dipendente_id)
-    .gte('giorno', giorno)
-    .lte('giorno', alGiorno)
+    .in('giorno', daysToUpdate)
 
   const giornateMap = new Map((giornate || []).map(g => [g.giorno, { lavorate: g.ore_lavorate, contrattuali: g.ore_contrattuali }]))
 
+  // Fetch all existing causali for these days to calculate available space if useMax is active
+  const { data: existingCausali } = await admin
+    .from('causali')
+    .select('giorno, numero, ore')
+    .eq('dipendente_id', dipendente_id)
+    .in('giorno', daysToUpdate)
+  
+  const existingMap = new Map<number, Array<{numero: number, ore: number}>>()
+  existingCausali?.forEach(c => {
+    const list = existingMap.get(c.giorno) || []
+    list.push({ numero: c.numero, ore: c.ore || 0 })
+    existingMap.set(c.giorno, list)
+  })
+
   const upserts = []
-  for (let g = giorno; g <= alGiorno; g++) {
+  for (const g of daysToUpdate) {
     let finalOre = oreNum
     const info = giornateMap.get(g)
+    const oreLavorate = info?.lavorate ?? 0
     const oreContrattuali = info?.contrattuali ?? 0
     
-    // Skip range duplicates on days with no theoretical ordinary hours (e.g. weekends)
-    if (alGiorno > giorno && codice) {
+    // Skip duplicates on days with no theoretical ordinary hours (e.g. weekends) if it's a multi-day selection
+    if (daysToUpdate.length > 1 && codice) {
       if (oreContrattuali <= 0) {
         continue
       }
     }
 
-    // Cap the hours to the maximum theoretical ordinary hours for that day
-    if (codice && finalOre !== null) {
+    if (useMax) {
+      const others = existingMap.get(g) || []
+      const otherSum = others.filter(o => o.numero !== numero).reduce((acc, o) => acc + o.ore, 0)
+      finalOre = Math.max(0, oreLavorate - otherSum)
+    } else if (codice && finalOre !== null) {
+      // Cap the hours to the maximum theoretical ordinary hours for that day
       finalOre = Math.min(finalOre, oreContrattuali)
     }
 
@@ -233,6 +268,12 @@ export async function saveGiornata(formData: FormData) {
   const valoreRaw = formData.get('valore') as string
   const valore = campo === 'turno' ? (valoreRaw || null) : ((valoreRaw && !isNaN(parseFloat(valoreRaw))) ? parseFloat(valoreRaw) : null)
 
+  const selectedDaysStr = formData.get('selectedDays') as string
+  const daysToUpdate = selectedDaysStr ? JSON.parse(selectedDaysStr) as number[] : []
+  if (daysToUpdate.length === 0) {
+    for (let g = giorno; g <= alGiorno; g++) daysToUpdate.push(g)
+  }
+
   if (!dipendente_id || !giorno || !campo) throw new Error('Dati mancanti')
 
   const admin = createAdminClient()
@@ -266,7 +307,7 @@ export async function saveGiornata(formData: FormData) {
   }
 
   const updates = []
-  for (let g = giorno; g <= alGiorno; g++) {
+  for (const g of daysToUpdate) {
     updates.push({
       dipendente_id,
       giorno: g,

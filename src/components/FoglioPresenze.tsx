@@ -162,6 +162,111 @@ function isFestivo(anno: number, mese: number, giorno: number) {
   return false
 }
 
+// Reusable calendar grid for multiple day selection
+function DayPickerGrid({
+  anno,
+  mese,
+  daysInMonth,
+  minDate = 1,
+  selectedDays,
+  workedDays = [],
+  onChange
+}: {
+  anno: number
+  mese: number
+  daysInMonth: number
+  minDate?: number
+  selectedDays: number[]
+  workedDays?: number[]
+  onChange: (days: number[]) => void
+}) {
+  const startDay = new Date(anno, mese - 1, 1).getDay()
+  const offset = startDay === 0 ? 6 : startDay - 1
+  
+  const weekDays = ['LU', 'MA', 'ME', 'GI', 'VE', 'SA', 'DO']
+  
+  const toggleDay = (d: number) => {
+    if (selectedDays.includes(d)) {
+      if (selectedDays.length > 1) {
+        onChange(selectedDays.filter(day => day !== d).sort((a, b) => a - b))
+      }
+    } else {
+      onChange([...selectedDays, d].sort((a, b) => a - b))
+    }
+  }
+
+  const selectAll = () => {
+    const all = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(d => d >= minDate)
+    onChange(all)
+  }
+
+  const selectWorked = () => {
+    const valid = workedDays.filter(d => d >= minDate)
+    if (valid.length > 0) onChange(valid)
+  }
+
+  return (
+    <div className="w-full bg-slate-50 p-2 rounded-2xl border border-slate-100">
+      <div className="flex items-center justify-between gap-2 mb-3 px-1">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Seleziona:</span>
+        <div className="flex gap-1.5">
+          <button 
+            type="button" 
+            onClick={selectAll}
+            className="text-[10px] font-black text-[#D32F2F] hover:bg-red-50 px-2 py-1 rounded-lg border border-red-100 transition-colors"
+          >
+            TUTTI
+          </button>
+          {workedDays.length > 0 && (
+            <button 
+              type="button" 
+              onClick={selectWorked}
+              className="text-[10px] font-black text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-colors"
+            >
+              LAVORATI
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {weekDays.map(wd => (
+          <div key={wd} className="text-[9px] font-bold text-center text-slate-400 uppercase">{wd}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: offset }).map((_, i) => (
+          <div key={`empty-${i}`} className="h-8" />
+        ))}
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+          const isAvailable = d >= minDate
+          const isSelected = selectedDays.includes(d)
+          const isToday = d === new Date().getDate() && new Date().getMonth() + 1 === mese && new Date().getFullYear() === anno
+
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={!isAvailable}
+              onClick={() => toggleDay(d)}
+              className={`
+                h-8 w-full flex items-center justify-center text-[11px] font-bold rounded-lg transition-all
+                ${isSelected 
+                  ? 'bg-[#D32F2F] text-white shadow-md scale-105 z-10' 
+                  : isAvailable 
+                    ? 'bg-white text-slate-600 hover:bg-red-50 hover:text-[#D32F2F] border border-slate-100' 
+                    : 'bg-slate-100/50 text-slate-300 cursor-not-allowed'}
+                ${isToday && !isSelected ? 'ring-1 ring-red-200' : ''}
+              `}
+            >
+              {d}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // Inline editable giornata cell for ordinary and night hours
 function GiornataCell({
   dipendente_id,
@@ -171,6 +276,8 @@ function GiornataCell({
   valoreContrattuale, // Renamed from valoreTeorico
   displayValore, // Value to display when not editing
   daysInMonth,
+  mese,
+  anno,
   isActive,
   onToggle
 }: {
@@ -181,11 +288,13 @@ function GiornataCell({
   valoreContrattuale: number | null
   displayValore: number | null
   daysInMonth: number
+  mese: number
+  anno: number
   isActive: boolean
   onToggle: (open: boolean) => void
 }) {
   const [valore, setValore] = useState(valoreIniziale !== null ? String(valoreIniziale) : '')
-  const [alGiorno, setAlGiorno] = useState(giorno)
+  const [selectedDays, setSelectedDays] = useState<number[]>([giorno])
   const [error, setError] = useState<string | null>(null)
   const [saving, startSave] = useTransition()
   const [optimisticValore, setOptimisticValore] = useState<string | null>(null)
@@ -198,11 +307,13 @@ function GiornataCell({
     }
   }, [valoreIniziale, isActive])
 
-  function handleSave() {
+  function handleSave(overrideValue?: string) {
+    const finalValore = typeof overrideValue === 'string' ? overrideValue : valore
     setError(null)
+    
     // Se stiamo modificando le ore lavorate, impediamo la riduzione sotto le contrattuali
     if (campo === 'ore_lavorate' && valoreContrattuale !== null) {
-      const v = parseFloat(valore) || 0
+      const v = parseFloat(finalValore) || 0
       if (v < valoreContrattuale) {
         setError("Per ridurre le ore lavorate usare i giustificativi.")
         return
@@ -211,7 +322,7 @@ function GiornataCell({
 
     // Se stiamo modificando le ore notturne, impediamo il superamento delle lavorate
     if (campo === 'ore_notturne' && valoreContrattuale !== null) {
-      const v = parseFloat(valore) || 0
+      const v = parseFloat(finalValore) || 0
       if (v > valoreContrattuale) {
         setError("Le ore notturne non possono essere maggiori delle ore lavorate.")
         return
@@ -221,11 +332,11 @@ function GiornataCell({
     const fd = new FormData()
     fd.set('dipendente_id', dipendente_id)
     fd.set('giorno', String(giorno))
-    fd.set('alGiorno', String(alGiorno))
+    fd.set('selectedDays', JSON.stringify(selectedDays))
     fd.set('campo', campo)
-    fd.set('valore', valore)
+    fd.set('valore', finalValore)
 
-    setOptimisticValore(valore)
+    setOptimisticValore(finalValore)
     onToggle(false)
 
     startSave(async () => {
@@ -239,13 +350,13 @@ function GiornataCell({
 
   const label = campo === 'ore_lavorate' ? 'Ore Lavorate' : 'Di cui notturne'
   const isOptimistic = optimisticValore !== null && saving
-  const currentValore = isOptimistic ? optimisticValore : (displayValore !== null ? displayValore : '')
+  const currentValore = isOptimistic ? optimisticValore : (displayValore ?? '')
 
   return (
     <div className="relative h-full w-full group">
       <div
         onClick={() => onToggle(!isActive)}
-        className={`flex h-full w-full min-h-[2rem] cursor-pointer items-center justify-center transition-colors hover:bg-slate-100/80 ${isOptimistic ? 'animate-pulse text-indigo-400 font-bold bg-indigo-50/20' : ''}`}
+        className={`flex h-full w-full min-h-[44px] cursor-pointer items-center justify-center transition-colors hover:bg-slate-100/80 ${isOptimistic ? 'animate-pulse text-indigo-400 font-bold bg-indigo-50/20' : ''}`}
       >
         {currentValore}
       </div>
@@ -274,23 +385,16 @@ function GiornataCell({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Dal</label>
-                  <div className="text-sm font-semibold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">Giorno {giorno}</div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Al</label>
-                  <select
-                    value={alGiorno}
-                    onChange={e => setAlGiorno(parseInt(e.target.value))}
-                    className="w-full text-sm font-semibold rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
-                  >
-                    {Array.from({ length: daysInMonth - giorno + 1 }, (_, i) => giorno + i).map(d => (
-                      <option key={d} value={d}>Giorno {d}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="pt-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
+                <DayPickerGrid
+                  anno={anno}
+                  mese={mese}
+                  daysInMonth={daysInMonth}
+                  minDate={1}
+                  selectedDays={selectedDays}
+                  onChange={setSelectedDays}
+                />
               </div>
             </div>
 
@@ -300,17 +404,32 @@ function GiornataCell({
               </div>
             )}
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-2 pt-2">
                 <button
+                  type="button"
                   onClick={() => onToggle(false)}
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50 transition-colors"
                 >
                   Annulla
                 </button>
+                {campo === 'ore_notturne' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValore('')
+                      handleSave('')
+                    }}
+                    disabled={saving}
+                    className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                  >
+                    Cancella
+                  </button>
+                )}
                 <button
-                  onClick={handleSave}
+                  type="button"
+                  onClick={() => handleSave()}
                   disabled={saving}
-                  className="flex-1 rounded-xl bg-[#D32F2F] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#b02727] disabled:opacity-50 shadow-lg shadow-red-900/10 transition-all"
+                  className="flex-[2] rounded-xl bg-[#D32F2F] px-4 py-2.5 text-[11px] font-bold text-white hover:bg-[#b02727] disabled:opacity-50 shadow-lg shadow-red-900/10 transition-all"
                 >
                   {saving ? 'Salvataggio...' : 'Conferma'}
                 </button>
@@ -353,7 +472,10 @@ function SedeCell({
   cantieri,
   additionalSedi,
   profile,
-  daysInMonth
+  daysInMonth,
+  mese,
+  anno,
+  workedDays,
 }: {
   dipendente_id: string
   giorno: number
@@ -364,10 +486,12 @@ function SedeCell({
   additionalSedi: any[]
   profile: any
   daysInMonth: number
+  mese: number
+  anno: number
+  workedDays: number[]
 }) {
   const [valore, setValore] = useState(valoreIniziale || '')
-  const [dalGiorno, setDalGiorno] = useState(giorno)
-  const [alGiorno, setAlGiorno] = useState(giorno)
+  const [selectedDays, setSelectedDays] = useState<number[]>([giorno])
   const [error, setError] = useState<string | null>(null)
   const [saving, startSave] = useTransition()
   const [optimisticValore, setOptimisticValore] = useState<string | null>(null)
@@ -375,8 +499,7 @@ function SedeCell({
   useEffect(() => {
     if (!isActive) {
       setValore(valoreIniziale || '')
-      setDalGiorno(giorno)
-      setAlGiorno(giorno)
+      setSelectedDays([giorno])
       setError(null)
     }
   }, [valoreIniziale, isActive, giorno])
@@ -390,8 +513,8 @@ function SedeCell({
 
     const fd = new FormData()
     fd.set('dipendente_id', dipendente_id)
-    fd.set('giorno', String(dalGiorno))
-    fd.set('alGiorno', String(alGiorno))
+    fd.set('giorno', String(giorno))
+    fd.set('selectedDays', JSON.stringify(selectedDays))
     fd.set('campo', 'turno')
     fd.set('valore', valore)
 
@@ -453,7 +576,7 @@ function SedeCell({
     <div className="relative h-full w-full group">
       <div
         onClick={() => onToggle(!isActive)}
-        className={`flex h-full w-full min-h-[2rem] cursor-pointer items-center justify-center transition-colors hover:bg-slate-100/80 ${cStyle.bg} ${isOptimistic ? 'animate-pulse opacity-70' : ''}`}
+        className={`flex h-full w-full min-h-[44px] cursor-pointer items-center justify-center transition-colors hover:bg-slate-100/80 ${cStyle.bg} ${isOptimistic ? 'animate-pulse opacity-70' : ''}`}
       >
         <span className={`px-0.5 leading-tight font-black ${currentValore && currentValore.length > 2 ? 'text-[9px]' : 'text-[11px]'} ${cStyle.text}`}>
           {currentValore}
@@ -487,31 +610,17 @@ function SedeCell({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Dal</label>
-                  <select
-                    value={dalGiorno}
-                    onChange={e => setDalGiorno(parseInt(e.target.value))}
-                    className="w-full text-sm font-semibold rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
-                  >
-                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => (
-                      <option key={d} value={d}>Giorno {d}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Al</label>
-                  <select
-                    value={alGiorno}
-                    onChange={e => setAlGiorno(parseInt(e.target.value))}
-                    className="w-full text-sm font-semibold rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
-                  >
-                    {Array.from({ length: daysInMonth - dalGiorno + 1 }, (_, i) => dalGiorno + i).map(d => (
-                      <option key={d} value={d}>Giorno {d}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="pt-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
+                <DayPickerGrid
+                  anno={anno}
+                  mese={mese}
+                  daysInMonth={daysInMonth}
+                  minDate={1}
+                  selectedDays={selectedDays}
+                  workedDays={workedDays}
+                  onChange={setSelectedDays}
+                />
               </div>
 
               {error && (
@@ -554,7 +663,11 @@ function CausaleCell({
   onToggle,
   otherCausaliSum,
   daysInMonth,
+  mese,
+  anno,
   isEdile,
+  workedDays,
+  overtimeDays,
 }: {
   dipendente_id: string
   giorno: number
@@ -565,12 +678,17 @@ function CausaleCell({
   onToggle: (open: boolean) => void
   otherCausaliSum: number
   daysInMonth: number
+  mese: number
+  anno: number
   isEdile: boolean
+  workedDays: number[]
+  overtimeDays: number[]
 }) {
   const [codice, setCodice] = useState(initial.codice || '')
   const [ore, setOre] = useState(initial.ore !== null ? String(initial.ore) : '')
   const [note, setNote] = useState(initial.note || '')
-  const [alGiorno, setAlGiorno] = useState(giorno)
+  const [selectedDays, setSelectedDays] = useState<number[]>([giorno])
+  const [useMax, setUseMax] = useState(false)
   const [saving, startSave] = useTransition()
   const [validationError, setValidationError] = useState<string | null>(null)
   const [hasChanged, setHasChanged] = useState(false)
@@ -614,6 +732,7 @@ function CausaleCell({
       setCigCodice('')
       setCigMeteo('')
       setShowDeleteConfirm(false)
+      setUseMax(false)
     }
   }, [initial.codice, initial.ore, initial.note, isActive])
 
@@ -635,15 +754,15 @@ function CausaleCell({
           fd.set('giorno', String(giorno))
           fd.set('numero', String(numero))
           fd.set('codice', codice)
-          fd.set('ore', ore)
+          fd.set('ore', useMax ? 'MAX' : ore)
           fd.set('note', note)
-          fd.set('alGiorno', String(alGiorno))
+          fd.set('selectedDays', JSON.stringify(selectedDays))
           saveCausale(fd)
         }
       }
       setHasChanged(false)
     }
-  }, [isActive, hasChanged, codice, ore, note, alGiorno, dipendente_id, giorno, numero, otherCausaliSum, oreLavorate])
+  }, [isActive, hasChanged, codice, ore, note, selectedDays, dipendente_id, giorno, numero, otherCausaliSum, oreLavorate])
 
   function handleSave() {
     setValidationError(null)
@@ -675,9 +794,9 @@ function CausaleCell({
     fd.set('giorno', String(giorno))
     fd.set('numero', String(numero))
     fd.set('codice', finalCodice)
-    fd.set('ore', finalOre)
+    fd.set('ore', useMax ? 'MAX' : finalOre)
     fd.set('note', finalNote)
-    fd.set('alGiorno', String(alGiorno))
+    fd.set('selectedDays', JSON.stringify(selectedDays))
 
     setOptimisticCodice(finalCodice)
     setOptimisticOre(finalOre)
@@ -720,7 +839,7 @@ function CausaleCell({
     fd.set('codice', '')
     fd.set('ore', '')
     fd.set('note', '')
-    fd.set('alGiorno', String(giorno))
+    fd.set('selectedDays', JSON.stringify(selectedDays))
 
     startSave(async () => {
       try { 
@@ -750,7 +869,7 @@ function CausaleCell({
     <td className="border border-slate-100 p-0 relative min-w-[32px]">
       <button
         onClick={() => onToggle(!isActive)}
-        className={`w-full h-full min-h-[28px] px-0.5 py-0.5 text-center text-[10px] transition-colors relative font-bold ${
+        className={`w-full h-full min-h-[44px] flex flex-col items-center justify-center transition-colors relative font-bold ${
           currentCodice
             ? `${cellStyle.bg} ${cellStyle.text}`
             : 'hover:bg-slate-50 text-slate-300'
@@ -820,37 +939,61 @@ function CausaleCell({
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Ore</label>
-                    <input
-                      type="number"
-                      value={ore}
-                      onChange={e => setOre(e.target.value)}
-                      placeholder={oreLavorate ? `Max ${oreLavorate}h` : 'Ore'}
-                      max={oreLavorate ?? undefined}
-                      min={0}
-                      step={0.5}
-                      className={`w-full text-sm rounded-xl border bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all ${validationError ? 'border-red-400' : 'border-slate-200'}`}
-                    />
+                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block tracking-wider">Ore</label>
+                    <div className="flex gap-3 items-center">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          disabled={useMax}
+                          value={useMax ? '' : ore}
+                          onChange={e => {
+                            setOre(e.target.value)
+                            setHasChanged(true)
+                          }}
+                          className={`w-full text-sm font-black rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all ${useMax ? 'opacity-50 grayscale bg-slate-100 cursor-not-allowed' : ''}`}
+                          placeholder={useMax ? 'MAX' : "0.0"}
+                        />
+                        {useMax && (
+                          <div className="absolute inset-y-0 right-3 flex items-center">
+                            <span className="text-[10px] font-black text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded uppercase">Auto</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <label className={`flex items-center gap-2 px-3 py-3 rounded-xl border transition-all cursor-pointer select-none ${useMax ? 'bg-red-50 border-red-200 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={useMax} 
+                          onChange={(e) => {
+                            setUseMax(e.target.checked)
+                            setHasChanged(true)
+                          }}
+                          className="w-4 h-4 text-[#D32F2F] rounded border-slate-300 focus:ring-[#D32F2F]"
+                        />
+                        <span className={`text-[10px] font-black uppercase ${useMax ? 'text-[#D32F2F]' : 'text-slate-500'}`}>MAX</span>
+                      </label>
+                    </div>
+                    {useMax && (
+                      <p className="mt-1.5 text-[10px] text-slate-500 font-medium italic">
+                        Verranno applicate le ore massime disponibili per ogni giorno selezionato.
+                      </p>
+                    )}
                   </div>
 
                   {/* Range */}
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Dal</label>
-                      <div className="text-sm font-semibold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">Giorno {giorno}</div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Al</label>
-                      <select
-                        value={alGiorno}
-                        onChange={e => setAlGiorno(parseInt(e.target.value))}
-                        className="w-full text-sm font-semibold rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
-                      >
-                        {Array.from({ length: daysInMonth - giorno + 1 }, (_, i) => giorno + i).map(d => (
-                          <option key={d} value={d}>Giorno {d}</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="pt-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
+                    <DayPickerGrid
+                      anno={anno}
+                      mese={mese}
+                      daysInMonth={daysInMonth}
+                      minDate={1}
+                      selectedDays={selectedDays}
+                      workedDays={workedDays}
+                      onChange={setSelectedDays}
+                    />
                   </div>
 
                   {/* Note for GEN */}
@@ -897,22 +1040,34 @@ function CausaleCell({
                     )}
                   </button>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { onToggle(false); setValidationError(null) }}
-                      className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
-                    >
-                      Annulla
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="rounded-xl bg-[#D32F2F] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#b02727] disabled:opacity-50 shadow-lg shadow-red-900/10 transition-all"
-                    >
-                      {saving ? 'Salvataggio...' : 'Conferma'}
-                    </button>
+                    {/* Avviso Straordinari */}
+                    {selectedDays.some(d => overtimeDays.includes(d)) && (
+                      <div className="mb-4 p-2 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 animate-pulse">
+                        <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                        <p className="text-[10px] text-red-700 font-bold leading-tight">
+                          Attenzione: si sta inserendo un giustificativo in una giornata con straordinari segnati.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { onToggle(false); setValidationError(null) }}
+                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="rounded-xl bg-[#D32F2F] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#b02727] disabled:opacity-50 shadow-lg shadow-red-900/10 transition-all"
+                      >
+                        {saving ? 'Salvataggio...' : 'Conferma'}
+                      </button>
+                    </div>
                   </div>
-                </div>
               </>
             )}
 
@@ -1206,8 +1361,8 @@ function DipendenteSection({
             </thead>
             <tbody>
               {/* Contrattuali — read only */}
-              <tr className="bg-slate-50/30">
-                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1.5 text-slate-500 font-medium border-r border-slate-200">
+              <tr className="bg-slate-50/50 border-b border-slate-100 h-8">
+                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-0.5 text-[11px] font-medium text-slate-400 border-r border-slate-200">
                   Contrattuali
                 </td>
                 {days.map(d => (
@@ -1222,8 +1377,8 @@ function DipendenteSection({
               </tr>
 
               {/* Ore lavorate — editable */}
-              <tr className="bg-white group/row">
-                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1.5 font-medium text-slate-700 border-r border-slate-200">
+              <tr className="bg-white border-b border-slate-200 group/row h-11">
+                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1 font-medium text-slate-700 border-r border-slate-200">
                   <div className="flex justify-between items-center">
                     <span>Ore lavorate</span>
                   </div>
@@ -1238,10 +1393,11 @@ function DipendenteSection({
                     return acc + (c?.ore ?? 0)
                   }, 0)
                   const effectiveOre = origOre !== null ? Math.max(0, origOre - totCausali) : null
+                  const isStraordinario = (giornata?.ore_lavorate || 0) > (giornata?.ore_contrattuali || 0)
                   return (
-                    <td key={d} className="relative border border-slate-100 p-0 text-center text-slate-900 font-bold text-sm min-w-[35px]">
+                    <td key={d} className={`relative border border-slate-100 p-0 text-center font-bold text-sm min-w-[35px] ${isStraordinario ? 'bg-amber-100' : ''}`}>
                       {isConfermato ? (
-                         <div className="flex h-full w-full items-center justify-center p-1.5">
+                         <div className={`flex h-11 w-full items-center justify-center p-1.5 ${isStraordinario ? 'text-amber-800' : 'text-slate-900'}`}>
                            {effectiveOre !== null ? effectiveOre : ''}
                          </div>
                       ) : (
@@ -1253,6 +1409,8 @@ function DipendenteSection({
                            valoreContrattuale={giornata?.ore_contrattuali ?? 0}
                            displayValore={effectiveOre}
                            daysInMonth={daysInMonth}
+                           mese={mese}
+                           anno={anno}
                            isActive={activeCell === cellId}
                            onToggle={(open) => onToggleCell(open ? cellId : null)}
                          />
@@ -1277,8 +1435,8 @@ function DipendenteSection({
                   <span className="block text-[8px] text-blue-600 font-normal uppercase tracking-wider">GG Lav</span>
                   {summary.giorniLavorati}
                 </td>
-                <td className="bg-blue-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
-                  <span className="block text-[8px] text-blue-600 font-normal uppercase tracking-wider">Straor.</span>
+                <td className="bg-amber-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
+                  <span className="block text-[8px] text-amber-600 font-normal uppercase tracking-wider">Straor.</span>
                   {summary.straordinario}
                 </td>
                 <td className="bg-blue-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
@@ -1287,9 +1445,9 @@ function DipendenteSection({
                 </td>
               </tr>
 
-              {/* Ore notturne — editable */}
-              <tr className="bg-white group/row">
-                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1.5 text-slate-500 border-r border-slate-200">
+                {/* Ore notturne — editable */}
+              <tr className="bg-white group/row h-11">
+                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1 text-slate-500 border-r border-slate-200">
                   di cui notturne
                 </td>
                 {days.map(d => {
@@ -1299,7 +1457,7 @@ function DipendenteSection({
                     <td key={d} className="relative border border-slate-100 p-0 text-center text-slate-900 font-bold text-sm min-w-[35px]">
                       {isConfermato ? (
                         <div className="flex h-full w-full items-center justify-center p-1.5">
-                          {giornata?.ore_notturne || ''}
+                          {giornata?.ore_notturne ?? ''}
                         </div>
                       ) : (
                         <GiornataCell
@@ -1310,6 +1468,8 @@ function DipendenteSection({
                           valoreContrattuale={giornata?.ore_lavorate ?? 0}
                           displayValore={giornata?.ore_notturne ?? null}
                           daysInMonth={daysInMonth}
+                          mese={mese}
+                          anno={anno}
                           isActive={activeCell === cellId}
                           onToggle={(open) => onToggleCell(open ? cellId : null)}
                         />
@@ -1352,8 +1512,8 @@ function DipendenteSection({
                 if (!isVisible) return null
 
                 return (
-                <tr key={n} className={n % 2 === 0 ? 'bg-amber-50/30' : 'bg-white'}>
-                  <td className={`sticky left-0 z-10 px-3 py-1.5 font-medium border-r border-slate-200 min-w-[100px] ${rowHasData(n) ? getCausaleStyle(
+                <tr key={n} className={`${n % 2 === 0 ? 'bg-amber-50/30' : 'bg-white'} h-11`}>
+                  <td className={`sticky left-0 z-10 px-3 py-1 font-medium border-r border-slate-200 min-w-[100px] ${rowHasData(n) ? getCausaleStyle(
                     (causali.filter(c => c.numero === n && c.codice).sort((a,b) => (b.giorno||0)-(a.giorno||0))[0]?.codice || null)
                   ).bg || 'bg-amber-50' : 'bg-amber-50/40'} ${rowHasData(n) ? getCausaleStyle(
                     (causali.filter(c => c.numero === n && c.codice).sort((a,b) => (b.giorno||0)-(a.giorno||0))[0]?.codice || null)
@@ -1396,16 +1556,20 @@ function DipendenteSection({
                       .filter(num => num !== n)
                       .reduce((acc, num) => acc + (getCausale(d, num)?.ore ?? 0), 0)
 
+                    const overtimeDays = days.filter(dx => (getGiornata(dx)?.ore_lavorate || 0) > (getGiornata(dx)?.ore_contrattuali || 0))
+
                     if (isConfermato) {
                       const cs = getCausaleStyle(c?.codice || null)
                       return (
-                        <td key={d} className={`border border-slate-100 px-1 py-1 text-center text-xs relative ${c?.codice ? `${cs.bg} ${cs.text} font-bold` : ''}`} title={c?.note ? `Meteo/Nota: ${c.note}` : undefined}>
-                          {c?.codice ? (
-                            <span className="font-bold">{c.codice}</span>
-                          ) : ''}
-                          {c?.ore ? <span className={`block text-[10px] opacity-70`}>{c.ore}h</span> : null}
-                          {c?.note && (
-                            <div className={`absolute top-0.5 right-0.5 w-1.5 h-1.5 ${cs.dot || 'bg-amber-400'} rounded-full`} />
+                        <td key={d} className="border border-slate-100 p-0 text-center text-xs relative h-11 min-w-[35px]" title={c?.note ? `Meteo/Nota: ${c.note}` : undefined}>
+                          {c?.codice && (
+                            <div className={`w-full h-full min-h-[44px] flex flex-col items-center justify-center ${cs.bg} ${cs.text} border-x border-black/5`}>
+                              <span className="font-black text-[11px] leading-tight">{c.codice}</span>
+                              {c?.ore ? <span className="text-[9px] font-medium opacity-80 leading-tight">{c.ore}h</span> : null}
+                              {c?.note && (
+                                <div className={`absolute top-1 right-1 w-1.5 h-1.5 ${cs.dot || 'bg-amber-400'} rounded-full ring-1 ring-white`} />
+                              )}
+                            </div>
                           )}
                         </td>
                       )
@@ -1418,10 +1582,14 @@ function DipendenteSection({
                         numero={n}
                         initial={getCausale(d, n) || { codice: null, ore: null, note: null }}
                         oreLavorate={getGiornata(d)?.ore_lavorate || null}
+                        workedDays={days.filter(x => (getGiornata(x)?.ore_lavorate || 0) > 0)}
+                        overtimeDays={overtimeDays}
                         isActive={activeCell === `${dip.id}-${d}-${n}`}
                         onToggle={(open) => onToggleCell(open ? `${dip.id}-${d}-${n}` : null)}
                         otherCausaliSum={otherCausaliSum}
                         daysInMonth={daysInMonth}
+                        mese={mese}
+                        anno={anno}
                         isEdile={isEdile}
                       />
                     )
@@ -1476,25 +1644,29 @@ function DipendenteSection({
                 </tr>
               )})}
 
-              {/* SEDE — editable */}
-              <tr className="bg-slate-50 group/row">
-                <td className="sticky left-0 z-10 bg-slate-50 px-3 py-1.5 text-slate-500 border-r border-slate-200">
-                  SEDE
+              {/* SEDE / Cantiere — editable */}
+              <tr className="bg-slate-50 group/row h-11">
+                <td className="sticky left-0 z-10 bg-slate-100 px-3 py-1 font-bold text-slate-700 border-r border-slate-200">
+                  {cantieri.length > 0 ? 'Cantiere' : 'Sede'}
                 </td>
                 {days.map(d => {
                   const giornata = getGiornata(d)
                   const cellId = `sede-${dip.id}-${d}`
                   
-                  if (isConfermato) {
-                    const cStyle = getCantiereColor(giornata?.turno || null)
-                    return (
-                      <td key={d} className={`border border-slate-100 px-0.5 py-1 text-center text-sm font-black ${cStyle.bg} ${cStyle.text}`}>
-                        <span className={giornata?.turno && giornata.turno.length > 2 ? 'text-[9px]' : 'text-[11px]'}>
-                          {giornata?.turno || ''}
-                        </span>
-                      </td>
-                    )
-                  }
+                    if (isConfermato) {
+                      const cStyle = getCantiereColor(giornata?.turno || null)
+                      return (
+                        <td key={d} className="border border-slate-100 p-0 text-center text-sm font-black h-11 min-w-[35px]">
+                          {giornata?.turno && (
+                            <div className={`w-full h-full min-h-[44px] flex items-center justify-center ${cStyle.bg} ${cStyle.text} border-x border-black/5`}>
+                              <span className={giornata.turno.length > 2 ? 'text-[9px]' : 'text-[11px]'}>
+                                {giornata.turno}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                      )
+                    }
 
                   return (
                     <td key={d} className="relative border border-slate-100 p-0 text-center text-slate-600 min-w-[35px] text-sm">
@@ -1508,6 +1680,9 @@ function DipendenteSection({
                         additionalSedi={additionalSedi}
                         profile={profile}
                         daysInMonth={daysInMonth}
+                        mese={mese}
+                        anno={anno}
+                        workedDays={days.filter(x => (getGiornata(x)?.ore_lavorate || 0) > 0)}
                       />
                     </td>
                   )
@@ -1729,6 +1904,7 @@ export default function FoglioPresenze({
   const [showCigDash, setShowCigDash] = useState(false)
   const [cigFasi, setCigFasi] = useState<{ cantiere_cod: string; fase_lavorativa: string }[]>(initialCigFasi || [])
   const [savingFase, setSavingFase] = useState(false)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   const daysInMonth = getDaysInMonth(anno, mese)
   const isConfermato = readOnly || status === 'confermato' || status === 'chiuso'
@@ -1809,17 +1985,30 @@ export default function FoglioPresenze({
   }
 
   function handleConfirm() {
+    console.log("[handleConfirm] Richiesta conferma invio. foglioId:", foglioId)
     if (isEdile && hasCig && !cigValid) {
-      setError(`⚠️ Compilare la Fase Lavorativa per i cantieri: ${cantieriSenzaFase.join(', ')}. Apri la Dashboard CIG per completare.`)
+      const msg = `⚠️ Compilare la Fase Lavorativa per i cantieri: ${cantieriSenzaFase.join(', ')}. Apri la Dashboard CIG per completare.`
+      setError(msg)
       return
     }
-    if (!confirm(`Confermi l'invio del foglio presenze di ${MESI[mese]} ${anno}? Una volta inviato non sarà più modificabile.`)) return
+    setShowConfirmModal(true)
+  }
+
+  async function processConfirm() {
+    setShowConfirmModal(false)
     setError(null)
-    startSend(() =>
-      confirmAndSend(foglioId)
-        .then(() => setSent(true))
-        .catch(e => setError(e.message))
-    )
+    console.log("[processConfirm] Avvio invio definitivo...")
+    
+    startSend(async () => {
+      try {
+        await confirmAndSend(foglioId)
+        setSent(true)
+        console.log("[processConfirm] Invio completato")
+      } catch (e: any) {
+        console.error("[processConfirm] Errore:", e)
+        setError(e.message || "Errore durante l'invio")
+      }
+    })
   }
 
   return (
@@ -2011,6 +2200,42 @@ export default function FoglioPresenze({
               >
                 Chiudi
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal di Conferma Invio */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden transform animate-in zoom-in-95 duration-200">
+            <div className="p-8 text-center">
+              <div className="mx-auto w-16 h-16 bg-red-50 text-[#D32F2F] rounded-full flex items-center justify-center mb-6">
+                <Send className="h-8 w-8" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Conferma l'invio?</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-8">
+                Stai per inviare il foglio presenze di <span className="font-bold text-slate-900">{MESI[mese]} {anno}</span>.<br />
+                Una volta inviato, i dati non potranno più essere modificati.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="px-6 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={processConfirm}
+                  className="px-6 py-3 rounded-2xl bg-[#D32F2F] text-white text-sm font-bold hover:bg-[#b02727] shadow-lg shadow-red-900/20 transition-all"
+                >
+                  Sì, Invia ora
+                </button>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-8 py-4 border-t border-slate-100 text-center">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Azione Irreversibile</p>
             </div>
           </div>
         </div>

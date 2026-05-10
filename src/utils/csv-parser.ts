@@ -29,19 +29,30 @@ export interface FoglioParsed {
  *     Ore lavorate | di cui notturne | Causale 1 | Ore | Causale 2 | Ore | ... x5 | Turno
  */
 export function parseGisCsv(csvText: string): FoglioParsed {
+  // Se il file contiene punti e virgola ma Papa non lo rileva, forziamolo
+  const hasSemicolon = csvText.includes(';')
   const { data: rows } = Papa.parse<string[]>(csvText, {
-    skipEmptyLines: false,
+    skipEmptyLines: true,
     header: false,
+    delimiter: hasSemicolon ? ';' : '',
   })
 
   // Extract header metadata
-  const row0 = rows[0] || []
-  const row1 = rows[1] || []
+  const row0 = rows.find(r => r.some(c => String(c).toLowerCase().includes('azienda'))) || rows[0] || []
+  const row1 = rows.find(r => r.some(c => String(c).toLowerCase().includes('anno'))) || rows[1] || []
 
-  const azienda = String(row0[1] || '').trim()
-  const sede = String(row0[3] || row0[2] || '').trim()
-  const anno = parseInt(String(row1[1] || '0').trim(), 10)
-  const mese = parseInt(String(row1[3] || row1[2] || '0').trim(), 10)
+  // Cerchiamo l'indice della colonna dopo "Azienda"
+  const aziendaIdx = row0.findIndex(c => String(c).toLowerCase().includes('azienda'))
+  const azienda = aziendaIdx !== -1 ? String(row0[aziendaIdx + 1] || '').trim() : ''
+
+  const sedeIdx = row0.findIndex(c => String(c).toLowerCase().includes('sede'))
+  const sede = sedeIdx !== -1 ? String(row0[sedeIdx + 1] || '').trim() : ''
+
+  const annoIdx = row1.findIndex(c => String(c).toLowerCase().includes('anno'))
+  const anno = annoIdx !== -1 ? parseInt(String(row1[annoIdx + 1] || '0').trim(), 10) : 0
+
+  const meseIdx = row1.findIndex(c => String(c).toLowerCase().includes('mese'))
+  const mese = meseIdx !== -1 ? parseInt(String(row1[meseIdx + 1] || '0').trim(), 10) : 0
 
   // Find header row (contains "Matricola")
   let headerRowIdx = -1
@@ -121,8 +132,8 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     for (let g = 1; g <= 31; g++) {
       const colIdx = 3 + (g - 1) // col 3 = giorno 1
 
-      const oreLav = parseFloat(String(block['ore lavorate']?.[colIdx] || '').trim())
-      const oreNot = parseFloat(String(block['di cui notturne']?.[colIdx] || '').trim())
+      const oreLav = parseFloat(String(block['ore lavorate']?.[colIdx] || '').trim().replace(',', '.'))
+      const oreNot = parseFloat(String(block['di cui notturne']?.[colIdx] || '').trim().replace(',', '.'))
       const turno = String(block['turno']?.[colIdx] || '').trim() || null
 
       const causali: DipendenteParsed['giorni'][number]['causali'] = []
@@ -140,7 +151,7 @@ export function parseGisCsv(csvText: string): FoglioParsed {
           if (rowText === `causale ${c}`) {
             const nextRow = rows[i + rIdx + 1]
             if (nextRow && String(nextRow[2] || '').toLowerCase() === 'ore') {
-              const rawOre = String(nextRow[colIdx] || '').trim()
+              const rawOre = String(nextRow[colIdx] || '').trim().replace(',', '.')
               oreVal = parseFloat(rawOre)
             }
             break

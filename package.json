@@ -1,6 +1,6 @@
 {
   "name": "gis-app",
-  "version": "1.0.40",
+  "version": "1.0.42",
   "private": true,
   "scripts": {
     "dev": "next dev",

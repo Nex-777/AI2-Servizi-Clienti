@@ -76,22 +76,15 @@ export async function uploadMultipleCsv(formData: FormData): Promise<UploadResul
       continue
     }
 
-    // 3. Find client by numero_ditta (try exact match, then padded with zeros)
+    // 3. Find client by numero_ditta (try exact match, stripped, or 6-char padded)
+    const stripped = numeroDitta.replace(/^0+/, '') || '0'
+    const padded = stripped.padStart(6, '0')
+
     let { data: clientProfile } = await admin
       .from('profiles')
       .select('id, email')
-      .eq('numero_ditta', numeroDitta)
+      .or(`numero_ditta.eq."${numeroDitta}",numero_ditta.eq."${stripped}",numero_ditta.eq."${padded}"`)
       .maybeSingle()
-
-    if (!clientProfile && numeroDitta.length < 6) {
-      const padded = numeroDitta.padStart(6, '0')
-      const { data: paddedProfile } = await admin
-        .from('profiles')
-        .select('id, email')
-        .eq('numero_ditta', padded)
-        .maybeSingle()
-      clientProfile = paddedProfile
-    }
 
     if (!clientProfile) {
       results.push({

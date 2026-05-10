@@ -7,6 +7,7 @@ export async function createClientAccount(formData: FormData) {
   const admin = createAdminClient()
   const codice1 = formData.get('codice1') as string
   const codice2 = formData.get('codice2') as string
+  const ragione_sociale = formData.get('ragione_sociale') as string
   const numeroDitta = (formData.get('numero_ditta') as string)?.trim() || null
   const numeroSede = formData.get('numero_sede') as string
   const provincia = formData.get('provincia') as string
@@ -49,6 +50,7 @@ export async function createClientAccount(formData: FormData) {
       id: userId,
       email: email,
       role: 'client',
+      ragione_sociale: ragione_sociale,
       numero_ditta: numeroDitta,
       numero_sede: numeroSede,
       provincia,
@@ -83,6 +85,7 @@ export async function deleteClientAccount(userId: string) {
 
 export async function updateClientProfile(userId: string, formData: FormData) {
   const admin = createAdminClient()
+  const ragione_sociale = formData.get('ragione_sociale') as string
   const numeroDitta = (formData.get('numero_ditta') as string)?.trim() || null
   const numeroSede = formData.get('numero_sede') as string
   const provincia = formData.get('provincia') as string
@@ -94,6 +97,7 @@ export async function updateClientProfile(userId: string, formData: FormData) {
   const { error } = await admin
     .from('profiles')
     .update({
+      ragione_sociale: ragione_sociale,
       numero_ditta: numeroDitta,
       numero_sede: numeroSede,
       provincia,

@@ -323,7 +323,7 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
 
     await resend.emails.send({
       from: 'AI2 Servizi Clienti <notifiche@agenziaitalia2.it>',
-      to: ['paoletti@agenziaitalia2.it'],
+      to: [process.env.ADMIN_EMAIL || 'paoletti@agenziaitalia2.it'],
       subject: `Nuova DNL Cantiere — ${committenteLabel} — ${cantiere.comune} (${cantiere.prov})`,
       text: emailText,
     })

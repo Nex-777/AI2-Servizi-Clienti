@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { login } from './actions'
 import { Eye, EyeOff } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const urlError = searchParams.get('error')
 
   async function handleLogin(formData: FormData) {
     setLoading(true)
@@ -15,15 +18,26 @@ export default function LoginPage() {
     try {
       await login(formData)
     } catch (e: unknown) {
-      // redirect throws - if it's a redirect error, let it pass
       const msg = e instanceof Error ? e.message : String(e)
-      if (!msg.includes('NEXT_REDIRECT')) {
-        setError('Codici non validi. Riprova.')
+      if (msg.includes('NEXT_REDIRECT')) {
+        // Next.js redirect - normal behavior
+        return
+      }
+      
+      // Traduciamo gli errori comuni di Supabase
+      if (msg.includes('Invalid login credentials')) {
+        setError('Codici non validi. Controlla Codice 1 e Codice 2.')
+      } else if (msg.includes('Email not confirmed')) {
+        setError('Account non ancora confermato.')
+      } else {
+        setError('Errore: ' + msg)
       }
     } finally {
       setLoading(false)
     }
   }
+
+  const displayError = error || (urlError ? 'Codici non validi. Riprova.' : null)
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#F8F9FA] px-4">
@@ -37,9 +51,9 @@ export default function LoginPage() {
         </div>
 
         <form action={handleLogin} className="space-y-6">
-          {error && (
+          {displayError && (
             <div className="rounded-md bg-red-50 p-3 text-center text-sm text-red-600 border border-red-200">
-              {error}
+              {displayError}
             </div>
           )}
 
@@ -94,5 +108,17 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen w-full items-center justify-center bg-[#F8F9FA]">
+        <div className="text-slate-500">Caricamento...</div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

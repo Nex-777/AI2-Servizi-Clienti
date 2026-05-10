@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { UploadCloud, Users, Settings, LogOut, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import ClientPage from './ClientPage'
+import AdminFogliList from './admin/AdminFogliList'
 
 export default async function DashboardPage({
   searchParams,
@@ -35,12 +36,20 @@ export default async function DashboardPage({
   const admin = createAdminClient()
   const { data: targetProfile } = await admin
     .from('profiles')
-    .select('role, provincia, comune, indirizzo, numero_sede, email, is_edile')
+    .select('role, provincia, comune, indirizzo, numero_sede, email, is_edile, ragione_sociale')
     .eq('id', effectiveUserId)
     .single()
 
   // 4. Admin Landing Page (if not impersonating)
   if (isAdmin && !impersonate) {
+    // Fetch all submitted fogli (status != 'bozza')
+    const { data: adminFogli } = await admin
+      .from('fogli_presenza')
+      .select('id, client_id, azienda, anno, mese, status, admin_status, uploaded_at, profiles!fogli_presenza_client_id_fkey(email, ragione_sociale), dipendenti(count)')
+      .neq('status', 'bozza')
+      .order('anno', { ascending: false })
+      .order('mese', { ascending: false })
+
     return (
       <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-8">
@@ -86,7 +95,12 @@ export default async function DashboardPage({
                 <p className="text-sm text-slate-500 mb-6">Definisci le regole di associazione CSV.</p>
                 <button className="w-full rounded-lg border border-slate-300 bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Impostazioni</button>
              </div>
-          </main>
+           </main>
+           
+           {/* Sezione Lista Segnaore Inviati */}
+           {adminFogli && adminFogli.length > 0 && (
+             <AdminFogliList fogli={adminFogli as any[]} />
+           )}
         </div>
       </div>
     )
@@ -162,10 +176,12 @@ export default async function DashboardPage({
             <div className="flex items-center gap-3">
               <ShieldAlert className="h-5 w-5" />
               <span className="text-sm font-bold uppercase tracking-wider">Modalità Supporto Admin Attiva</span>
-              <span className="text-xs bg-white/20 px-2 py-0.5 rounded ml-2">Stai operando per conto di: {targetProfile?.email}</span>
+              <span className="text-xs bg-white/20 px-2 py-0.5 rounded ml-2">
+                Stai operando per: {targetProfile?.ragione_sociale || targetProfile?.email}
+              </span>
             </div>
-            <Link href="/admin/clients" className="text-xs font-bold bg-white text-red-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-              Torna alla Gestione
+            <Link href="/" className="text-xs font-bold bg-white text-red-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+              Esci dal Supporto
             </Link>
           </div>
         )}
@@ -181,7 +197,9 @@ export default async function DashboardPage({
           
           <div className="flex items-center gap-4 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
              <div className="flex flex-col text-right px-2">
-                <span className="text-sm font-semibold text-slate-900">{isImpersonating ? targetProfile?.email : user.email}</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {isImpersonating ? (targetProfile?.ragione_sociale || targetProfile?.email) : (user.email)}
+                </span>
                 <span className={`text-xs font-bold uppercase tracking-wider ${isImpersonating ? 'text-red-600' : 'text-[#D32F2F]'}`}>
                   {isImpersonating ? 'Impersonificazione' : 'Cliente'}
                 </span>

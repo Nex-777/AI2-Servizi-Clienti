@@ -100,7 +100,9 @@ export default function Dashboard({
       <section>
         <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <h2 className="text-3xl font-bold text-slate-900">Benvenuto, {userEmail.split('@')[0]}</h2>
+            <h2 className="text-3xl font-bold text-slate-900">
+              Benvenuto, {profile?.ragione_sociale || userEmail.split('@')[0]}
+            </h2>
             <p className="mt-2 text-slate-500 max-w-xl">
               Questo è il tuo hub di gestione. Qui puoi controllare i tuoi fogli presenze, consultare lo storico e gestire i servizi attivi.
             </p>

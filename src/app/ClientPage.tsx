@@ -48,7 +48,7 @@ export default function ClientPage({
     return (
       <FoglioPresenze
         foglioId={selectedFoglioData.id}
-        azienda={selectedFoglioData.azienda}
+        azienda={profile?.ragione_sociale || selectedFoglioData.azienda}
         sede={selectedFoglioData.sede}
         anno={selectedFoglioData.anno}
         mese={selectedFoglioData.mese}

@@ -20,7 +20,9 @@ export async function login(formData: FormData) {
 
   if (error) {
     console.error('Login Error:', error.message)
-    redirect('/login?error=true')
+    // Invece di redirect, lanciamo l'errore per farlo catturare dal client
+    // o ritorniamo un oggetto se preferiamo, ma il redirect con query param era il vecchio stile
+    throw new Error(error.message)
   }
 
   revalidatePath('/', 'layout')
