@@ -288,7 +288,7 @@ export async function saveGiornata(formData: FormData) {
       .single()
     
     if (current && current.ore_contrattuali !== null && valore < current.ore_contrattuali) {
-      throw new Error(`Per ridurre le ore lavorate usare i giustificativi.`)
+      throw new Error(`Per ridurre le ore lavorate usare le causali.`)
     }
   }
 

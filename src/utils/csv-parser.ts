@@ -37,27 +37,27 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     delimiter: hasSemicolon ? ';' : '',
   })
 
-  // Extract header metadata
-  const row0 = rows.find(r => r.some(c => String(c).toLowerCase().includes('azienda'))) || rows[0] || []
-  const row1 = rows.find(r => r.some(c => String(c).toLowerCase().includes('anno'))) || rows[1] || []
+  // Extract metadata (Azienda, Sede, Anno, Mese) from anywhere in the first few rows
+  let azienda = ''
+  let sede = ''
+  let anno = 0
+  let mese = 0
 
-  // Cerchiamo l'indice della colonna dopo "Azienda"
-  const aziendaIdx = row0.findIndex(c => String(c).toLowerCase().includes('azienda'))
-  const azienda = aziendaIdx !== -1 ? String(row0[aziendaIdx + 1] || '').trim() : ''
-
-  const sedeIdx = row0.findIndex(c => String(c).toLowerCase().includes('sede'))
-  const sede = sedeIdx !== -1 ? String(row0[sedeIdx + 1] || '').trim() : ''
-
-  const annoIdx = row1.findIndex(c => String(c).toLowerCase().includes('anno'))
-  const anno = annoIdx !== -1 ? parseInt(String(row1[annoIdx + 1] || '0').trim(), 10) : 0
-
-  const meseIdx = row1.findIndex(c => String(c).toLowerCase().includes('mese'))
-  const mese = meseIdx !== -1 ? parseInt(String(row1[meseIdx + 1] || '0').trim(), 10) : 0
+  for (const row of rows.slice(0, 10)) {
+    for (let j = 0; j < row.length - 1; j++) {
+      const label = String(row[j] || '').toLowerCase().trim()
+      const value = String(row[j + 1] || '').trim()
+      if (label === 'azienda') azienda = value
+      if (label === 'sede') sede = value
+      if (label === 'anno') anno = parseInt(value, 10)
+      if (label === 'mese') mese = parseInt(value, 10)
+    }
+  }
 
   // Find header row (contains "Matricola")
   let headerRowIdx = -1
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i].some(c => String(c).toLowerCase().includes('matricola'))) {
+    if (rows[i].some(c => String(c).toLowerCase().trim() === 'matricola')) {
       headerRowIdx = i
       break
     }
@@ -68,7 +68,6 @@ export function parseGisCsv(csvText: string): FoglioParsed {
   }
 
   // Day columns start at index 3 (1..31)
-  // rows[headerRowIdx][3] = "1", [4] = "2", ...
   const dataStart = headerRowIdx + 1
   const dipendenti: DipendenteParsed[] = []
 
@@ -79,7 +78,9 @@ export function parseGisCsv(csvText: string): FoglioParsed {
     const rawNome = String(row[1] || '').trim()
 
     // Skip empty rows or header repetitions
-    if ((!matricola && !rawNome) || matricola.toLowerCase().includes('matricola') || rawNome.toLowerCase().includes('cognome')) {
+    // We use exact match for "matricola" or "cognome e nome" to avoid skipping real names
+    const isHeader = matricola.toLowerCase() === 'matricola' || rawNome.toLowerCase() === 'cognome e nome'
+    if ((!matricola && !rawNome) || isHeader) {
       i++
       continue
     }
@@ -111,10 +112,13 @@ export function parseGisCsv(csvText: string): FoglioParsed {
       const tipo = String(currentRow[2] || '').trim().toLowerCase()
       
       // If we see a new matricola (and it's not the current one) or a header, we stop
-      if (j > 0 && currentRow[0] && String(currentRow[0]).trim() !== matricola) break
-      if (j > 0 && String(currentRow[0]).toLowerCase().includes('matricola')) break
+      if (j > 0 && currentRow[0] && String(currentRow[0]).trim() !== matricola && String(currentRow[0]).trim() !== '') break
+      if (j > 0 && String(currentRow[0]).toLowerCase().trim() === 'matricola') break
 
       if (tipo) {
+        // For 'causale X' and 'ore', we keep them in order to avoid overwriting generic keys
+        block[`${tipo}_${j}`] = currentRow
+        // Also keep the latest for backward compatibility if needed
         block[tipo] = currentRow
       }
       rowsProcessed = j + 1
@@ -138,21 +142,24 @@ export function parseGisCsv(csvText: string): FoglioParsed {
 
       const causali: DipendenteParsed['giorni'][number]['causali'] = []
       for (let c = 1; c <= 5; c++) {
-        const codice = String(block[`causale ${c}`]?.[colIdx] || '').trim() || null
-        // The 'Ore' row might be generic 'ore' multiple times or 'ore' following each causale
-        // In the GIS format, it's usually: Causale 1, Ore, Causale 2, Ore...
-        // Our 'block' mapping might overwrite 'ore' if we use it as key.
-        // Let's check the original rows for 'ore' relative to the causale row.
-        
-        // Find the index of the 'Causale X' row in the original rows to find the 'Ore' row right after it
+        // Find the 'Causale X' row and the 'Ore' row immediately following it
+        let codice = null
         let oreVal = null
+
         for (let rIdx = 0; rIdx < rowsProcessed; rIdx++) {
-          const rowText = String(rows[i + rIdx][2] || '').toLowerCase()
-          if (rowText === `causale ${c}`) {
-            const nextRow = rows[i + rIdx + 1]
-            if (nextRow && String(nextRow[2] || '').toLowerCase() === 'ore') {
-              const rawOre = String(nextRow[colIdx] || '').trim().replace(',', '.')
-              oreVal = parseFloat(rawOre)
+          const row = rows[i + rIdx]
+          const label = String(row[2] || '').toLowerCase().trim()
+          
+          if (label === `causale ${c}`) {
+            codice = String(row[colIdx] || '').trim() || null
+            // Check the very next row for 'Ore'
+            if (rIdx + 1 < rowsProcessed) {
+              const nextRow = rows[i + rIdx + 1]
+              if (String(nextRow[2] || '').toLowerCase().trim() === 'ore') {
+                const rawOre = String(nextRow[colIdx] || '').trim().replace(',', '.')
+                const parsed = parseFloat(rawOre)
+                if (!isNaN(parsed)) oreVal = parsed
+              }
             }
             break
           }

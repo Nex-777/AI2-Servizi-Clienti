@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect, useRef } from 'react'
-import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock } from 'lucide-react'
+import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle } from 'lucide-react'
 
 import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata } from '@/app/actions/confirm'
 
@@ -47,8 +47,8 @@ const CIG_OPZIONI = [
   { codice: '*GK', label: 'CIG Ord. atmos. zero ore — con anticipo' },
 ]
 
-// — Lista giustificativi (dinamica: edile → FD/PD) —
-function getGiustificativi(isEdile: boolean) {
+// — Lista causali (dinamica: edile → FD/PD) —
+function getElencoCausali(isEdile: boolean) {
   return [
     { codice: isEdile ? '*FD' : '*FE', label: isEdile ? 'Ferie Figurative' : 'Ferie' },
     { codice: isEdile ? '*PD' : '*PE', label: isEdile ? 'Permessi Figurativi' : 'Permessi' },
@@ -315,7 +315,7 @@ function GiornataCell({
     if (campo === 'ore_lavorate' && valoreContrattuale !== null) {
       const v = parseFloat(finalValore) || 0
       if (v < valoreContrattuale) {
-        setError("Per ridurre le ore lavorate usare i giustificativi.")
+        setError("Per ridurre le ore lavorate usare le causali.")
         return
       }
     }
@@ -372,18 +372,28 @@ function GiornataCell({
             </h3>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Ore</label>
-                <input
-                  type="number"
-                  value={valore}
-                  onChange={e => setValore(e.target.value)}
-                  placeholder="Inserisci ore"
-                  min={0}
-                  step={0.5}
-                  className="w-full text-sm rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
-                />
-              </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Ore</label>
+                    <input
+                      type="number"
+                      value={valore}
+                      onChange={e => setValore(e.target.value)}
+                      placeholder="Inserisci ore"
+                      min={0}
+                      step={0.5}
+                      className={`w-full text-sm rounded-xl border px-3 py-2 outline-none transition-all ${
+                        parseFloat(valore) > 12 
+                          ? 'border-red-500 bg-red-50 focus:ring-red-200' 
+                          : 'border-slate-200 bg-slate-50 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F]'
+                      }`}
+                    />
+                    {parseFloat(valore) > 12 && (
+                      <p className="text-[10px] text-red-600 font-bold mt-1.5 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Superati i limiti di lavoro giornalieri
+                      </p>
+                    )}
+                  </div>
 
               <div className="pt-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
@@ -863,7 +873,7 @@ function CausaleCell({
   const currentCodice = isClearedDisplay ? '' : (isOptimistic ? optimisticCodice : (initial.codice || ''))
   const currentOre = isClearedDisplay ? '' : (isOptimistic ? optimisticOre : (initial.ore ? String(initial.ore) : ''))
   const cellStyle = getCausaleStyle(currentCodice)
-  const giustificativi = getGiustificativi(isEdile)
+  const elencoCausali = getElencoCausali(isEdile)
 
   return (
     <td className="border border-slate-100 p-0 relative min-w-[32px]">
@@ -887,7 +897,7 @@ function CausaleCell({
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-slate-900">
-                {cigStep === 2 ? '🏗️ Dettaglio CIG' : 'Modifica Giustificativo'}
+                {cigStep === 2 ? '🏗️ Dettaglio CIG' : 'Modifica Causale'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
                 Giorno {giorno} — Caus. {numero}
@@ -900,13 +910,13 @@ function CausaleCell({
                 {oreLavorate !== null && (
                   <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800">
                     Ore ordinarie disponibili: <strong>{oreLavorate}h</strong><br/>
-                    <span className="text-[10px] opacity-80">Rimanenti dopo altri giustificativi: {Math.max(0, oreLavorate - otherCausaliSum)}h</span>
+                    <span className="text-[10px] opacity-80">Rimanenti dopo altre causali: {Math.max(0, oreLavorate - otherCausaliSum)}h</span>
                   </div>
                 )}
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Tipo Giustificativo</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Tipo Causale</label>
                     <select
                       value={isCigCode(codice) ? '__CIG__' : codice}
                       onChange={e => {
@@ -922,8 +932,8 @@ function CausaleCell({
                       }}
                       className="w-full text-sm rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-[#D32F2F]/20 focus:border-[#D32F2F] transition-all"
                     >
-                      <option value="">— Nessuno —</option>
-                      {giustificativi.map(g => (
+                      <option value="">— Nessuna —</option>
+                      {elencoCausali.map(g => (
                         <option key={g.codice} value={g.codice}>{g.codice} — {g.label}</option>
                       ))}
                       {isEdile && (
@@ -1023,7 +1033,7 @@ function CausaleCell({
                       handleClear()
                     }}
                     onMouseLeave={() => setShowDeleteConfirm(false)}
-                    title={showDeleteConfirm ? "Conferma cancellazione" : "Rimuovi questo giustificativo"}
+                    title={showDeleteConfirm ? "Conferma cancellazione" : "Rimuovi questa causale"}
                     className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all border ${
                       showDeleteConfirm 
                         ? 'bg-red-600 text-white border-red-700 shadow-inner' 
@@ -1045,7 +1055,7 @@ function CausaleCell({
                       <div className="mb-4 p-2 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 animate-pulse">
                         <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
                         <p className="text-[10px] text-red-700 font-bold leading-tight">
-                          Attenzione: si sta inserendo un giustificativo in una giornata con straordinari segnati.
+                          Attenzione: si sta inserendo una causale in una giornata con straordinari segnati.
                         </p>
                       </div>
                     )}
@@ -1162,7 +1172,7 @@ interface FoglioPresenzaProps {
   onBack?: () => void
 }
 
-function DipendenteSection({ 
+function DipendenteSectionDesktop({ 
   dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese 
 }: { 
   dip: Dipendente, 
@@ -1284,7 +1294,8 @@ function DipendenteSection({
       }
     }
     
-    // Le ordinarie pagate sono le lavorate effettive meno i giustificativi (ferie, permessi ecc)
+    
+    // Le ordinarie pagate sono le lavorate effettive meno le causali (ferie, permessi ecc)
     // MA non devono superare le teoriche (perché l'eccedenza è già nello straordinario)
     const basePerOrdinarie = Math.min(oreLavorateEffettive, oreContrattuali)
     const effectiveOrd = Math.max(0, basePerOrdinarie - oreGiustificateGiorno)
@@ -1394,10 +1405,16 @@ function DipendenteSection({
                   }, 0)
                   const effectiveOre = origOre !== null ? Math.max(0, origOre - totCausali) : null
                   const isStraordinario = (giornata?.ore_lavorate || 0) > (giornata?.ore_contrattuali || 0)
+                  const isOverLimit = (giornata?.ore_lavorate || 0) > 12
+                  
+                  let cellBg = ''
+                  if (isOverLimit) cellBg = 'bg-red-100'
+                  else if (isStraordinario) cellBg = 'bg-amber-100'
+
                   return (
-                    <td key={d} className={`relative border border-slate-100 p-0 text-center font-bold text-sm min-w-[35px] ${isStraordinario ? 'bg-amber-100' : ''}`}>
+                    <td key={d} className={`relative border border-slate-100 p-0 text-center font-bold text-sm min-w-[35px] ${cellBg}`}>
                       {isConfermato ? (
-                         <div className={`flex h-11 w-full items-center justify-center p-1.5 ${isStraordinario ? 'text-amber-800' : 'text-slate-900'}`}>
+                         <div className={`flex h-11 w-full items-center justify-center p-1.5 ${isOverLimit ? 'text-red-800' : isStraordinario ? 'text-amber-800' : 'text-slate-900'}`}>
                            {effectiveOre !== null ? effectiveOre : ''}
                          </div>
                       ) : (
@@ -1891,11 +1908,226 @@ function CigCantiereCard({
 }
 
 
+function DipendenteSectionMobile({
+  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese 
+}: { 
+  dip: Dipendente, 
+  daysInMonth: number, 
+  foglioStatus: string,
+  activeCell: string | null,
+  onToggleCell: (id: string | null) => void,
+  cantieri: any[],
+  additionalSedi: any[],
+  profile: any,
+  isEdile: boolean,
+  anno: number,
+  mese: number
+}) {
+  const [causali, setCausali] = useState(dip.causali)
+  const isConfermato = foglioStatus === 'confermato' || foglioStatus === 'chiuso'
+
+  useEffect(() => {
+    setCausali(dip.causali)
+  }, [dip.causali])
+
+  const getGiornata = (g: number) => dip.giornate.find(x => x.giorno === g)
+  const getCausale = (g: number, n: number) => causali.find(c => c.giorno === g && c.numero === n)
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+
+  // Summary Totals logic (same as desktop)
+  const summary = { ordinarie: 0, straordinario: 0, giorniLavorati: 0, codici: {} as Record<string, number> }
+  days.forEach(d => {
+    const giornata = getGiornata(d)
+    const oreLavorateEffettive = giornata?.ore_lavorate ?? 0
+    const oreContrattuali = giornata?.ore_contrattuali ?? 0
+    if (oreLavorateEffettive > oreContrattuali) summary.straordinario += (oreLavorateEffettive - oreContrattuali)
+    let oreGiustificateGiorno = 0
+    for(let n=1; n<=5; n++) {
+      const c = getCausale(d, n)
+      if (c?.ore && c.codice) {
+        summary.codici[c.codice] = (summary.codici[c.codice] || 0) + c.ore
+        oreGiustificateGiorno += c.ore
+      }
+    }
+    const basePerOrdinarie = Math.min(oreLavorateEffettive, oreContrattuali)
+    const effectiveOrd = Math.max(0, basePerOrdinarie - oreGiustificateGiorno)
+    summary.ordinarie += effectiveOrd
+    if (effectiveOrd > 0) summary.giorniLavorati++
+  })
+
+  const getSum = (codes: string[]) => codes.reduce((acc, code) => acc + (summary.codici[code] || 0), 0)
+  const totals = {
+    ferie: getSum(['*FE', '*FD']),
+    permessi: getSum(['*PE', '*PD', '*PA']),
+    rol: getSum(['*RO']),
+    festivita: getSum(['*EF']),
+    malattia: getSum(['*ML']),
+    infortunio: getSum(['*IN']),
+    maternita: getSum(['*MT', '*MO']),
+    allattamento: getSum(['*AT']),
+    donazione: getSum(['*DS']),
+    altro: getSum(['GEN']),
+    nonPagate: getSum(['*NP']),
+    cig: getSum(['*GG', '*GH', '*GJ', '*GK']),
+  }
+  const totaleOre = summary.ordinarie + totals.ferie + totals.permessi + totals.rol + totals.festivita + totals.malattia + totals.infortunio + totals.maternita + totals.allattamento + totals.donazione + totals.altro
+  const giorniRetribuiti = summary.giorniLavorati + (totals.ferie > 0 ? 1 : 0)
+
+  const rotatedHeaderClass = "[writing-mode:vertical-rl] rotate-180 py-2 px-1 text-[10px] font-bold uppercase tracking-tighter h-24 min-w-[32px] border-l border-slate-200"
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-100 text-slate-500">
+              <th className="sticky left-0 z-20 bg-slate-100 p-2 text-[10px] font-black border-r border-slate-200 min-w-[50px]">GG</th>
+              <th className={rotatedHeaderClass}>Lavorate</th>
+              <th className={rotatedHeaderClass}>Notturne</th>
+              <th className={rotatedHeaderClass}>Causale 1</th>
+              <th className={rotatedHeaderClass}>Causale 2</th>
+              <th className={rotatedHeaderClass}>Causale 3</th>
+              <th className={rotatedHeaderClass}>Causale 4</th>
+              <th className={rotatedHeaderClass}>Causale 5</th>
+              <th className={rotatedHeaderClass}>Cantiere</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map(d => {
+              const date = new Date(anno, mese - 1, d)
+              const isDomenica = date.getDay() === 0
+              const isF = isFestivo(anno, mese, d)
+              const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
+              const giornata = getGiornata(d)
+              const isStraordinario = (giornata?.ore_lavorate || 0) > (giornata?.ore_contrattuali || 0)
+              const isOverLimit = (giornata?.ore_lavorate || 0) > 12
+              
+              let cellBg = ''
+              if (isOverLimit) cellBg = 'bg-red-100/50'
+              else if (isStraordinario) cellBg = 'bg-amber-100/30'
+
+              return (
+                <tr key={d} className={`${dayColor} border-b border-slate-100 h-11`}>
+                  <td className="sticky left-0 z-10 bg-inherit border-r border-slate-200 p-1 text-center relative">
+                    <div className={`text-[11px] font-black ${isDomenica ? 'text-red-600' : isF ? 'text-amber-600' : 'text-slate-900'}`}>{d}</div>
+                    <div className="text-[8px] font-bold opacity-50 uppercase">{dayName}</div>
+                    {isDomenica && isF && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-amber-400 rounded-full" />}
+                  </td>
+                  
+                  {/* Lavorate */}
+                  <td className={`p-0 border-r border-slate-100 ${cellBg}`}>
+                    {isConfermato ? (
+                      <div className={`h-11 flex items-center justify-center text-xs font-bold ${isOverLimit ? 'text-red-800' : isStraordinario ? 'text-amber-800' : ''}`}>
+                        {giornata?.ore_lavorate != null ? Math.max(0, giornata.ore_lavorate - [1,2,3,4,5].reduce((a, n) => a + (getCausale(d, n)?.ore ?? 0), 0)) : ''}
+                      </div>
+                    ) : (
+                      <GiornataCell
+                        dipendente_id={dip.id} giorno={d} campo="ore_lavorate" valoreIniziale={giornata?.ore_lavorate ?? null}
+                        valoreContrattuale={giornata?.ore_contrattuali ?? 0}
+                        displayValore={giornata?.ore_lavorate != null ? Math.max(0, (giornata.ore_lavorate || 0) - [1,2,3,4,5].reduce((a, n) => a + (getCausale(d, n)?.ore ?? 0), 0)) : null}
+                        daysInMonth={daysInMonth} mese={mese} anno={anno}
+                        isActive={activeCell === `mob-lav-${dip.id}-${d}`}
+                        onToggle={(open) => onToggleCell(open ? `mob-lav-${dip.id}-${d}` : null)}
+                      />
+                    )}
+                  </td>
+
+                  {/* Notturne */}
+                  <td className="p-0 border-r border-slate-100">
+                    {isConfermato ? (
+                      <div className="h-11 flex items-center justify-center text-xs font-bold text-indigo-600">
+                        {giornata?.ore_notturne || ''}
+                      </div>
+                    ) : (
+                      <GiornataCell
+                        dipendente_id={dip.id} giorno={d} campo="ore_notturne" valoreIniziale={giornata?.ore_notturne ?? null}
+                        valoreContrattuale={giornata?.ore_lavorate ?? 0} displayValore={giornata?.ore_notturne ?? null}
+                        daysInMonth={daysInMonth} mese={mese} anno={anno}
+                        isActive={activeCell === `mob-not-${dip.id}-${d}`}
+                        onToggle={(open) => onToggleCell(open ? `mob-not-${dip.id}-${d}` : null)}
+                      />
+                    )}
+                  </td>
+
+                  {/* Causali 1-5 */}
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <CausaleCell
+                      key={n} dipendente_id={dip.id} giorno={d} numero={n}
+                      initial={getCausale(d, n) || { codice: null, ore: null, note: null }}
+                      oreLavorate={giornata?.ore_lavorate || null}
+                      workedDays={days.filter(x => (getGiornata(x)?.ore_lavorate || 0) > 0)}
+                      overtimeDays={days.filter(dx => (getGiornata(dx)?.ore_lavorate || 0) > (getGiornata(dx)?.ore_contrattuali || 0))}
+                      isActive={activeCell === `mob-cau-${dip.id}-${d}-${n}`}
+                      onToggle={(open) => onToggleCell(open ? `mob-cau-${dip.id}-${d}-${n}` : null)}
+                      otherCausaliSum={[1,2,3,4,5].filter(num => num !== n).reduce((acc, num) => acc + (getCausale(d, num)?.ore ?? 0), 0)}
+                      daysInMonth={daysInMonth} mese={mese} anno={anno} isEdile={isEdile}
+                    />
+                  ))}
+
+                  {/* Cantiere */}
+                  <td className="p-0">
+                    <SedeCell
+                      dipendente_id={dip.id} giorno={d} valoreIniziale={giornata?.turno ?? null}
+                      isActive={activeCell === `mob-sede-${dip.id}-${d}`}
+                      onToggle={(open) => onToggleCell(open ? `mob-sede-${dip.id}-${d}` : null)}
+                      cantieri={cantieri} additionalSedi={additionalSedi} profile={profile}
+                      daysInMonth={daysInMonth} mese={mese} anno={anno}
+                      workedDays={days.filter(x => (getGiornata(x)?.ore_lavorate || 0) > 0)}
+                    />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Totals Summary at Bottom */}
+      <div className="bg-slate-50 p-4 border-t-2 border-slate-200">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 text-center">Riepilogo Mensile</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-blue-700">HH LAV</span>
+            <span className="text-sm font-black text-blue-900">{summary.ordinarie}</span>
+          </div>
+          <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-100 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-emerald-700">HH RETR</span>
+            <span className="text-sm font-black text-emerald-900">{totaleOre}</span>
+          </div>
+          <div className="bg-amber-50 p-2 rounded-lg border border-amber-100 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-amber-700">STRAORD</span>
+            <span className="text-sm font-black text-amber-900">{summary.straordinario}</span>
+          </div>
+          <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-slate-600">GG LAV</span>
+            <span className="text-sm font-black text-slate-900">{summary.giorniLavorati}</span>
+          </div>
+        </div>
+
+        {/* Justifications Grid */}
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          {Object.entries(totals).filter(([_, val]) => val > 0).map(([key, val]) => {
+            const cs = getCausaleStyle(key === 'ferie' ? '*FE' : key === 'permessi' ? '*PE' : key === 'malattia' ? '*ML' : key === 'infortunio' ? '*IN' : key === 'maternita' ? '*MT' : key === 'cig' ? '*GG' : 'GEN')
+            return (
+              <div key={key} className={`${cs.riepilogoBg || 'bg-white'} p-1.5 rounded-lg border border-slate-100 flex flex-col items-center`}>
+                <span className={`text-[8px] font-bold uppercase ${cs.riepilogoText || 'text-slate-400'}`}>{key}</span>
+                <span className="text-xs font-black">{val}h</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // Main component
 export default function FoglioPresenze({
   foglioId, azienda, sede, anno, mese, status, dipendenti: initialDipendenti,
   cantieri, additionalSedi, profile, cigFasi: initialCigFasi, readOnly, onBack
 }: FoglioPresenzaProps) {
+  const [selectedDipMobile, setSelectedDipMobile] = useState(initialDipendenti[0]?.id)
   const [activeCell, setActiveCell] = useState<string | null>(null)
   const [showLegenda, setShowLegenda] = useState(false)
   const [sending, startSend] = useTransition()
@@ -1909,7 +2141,7 @@ export default function FoglioPresenze({
   const daysInMonth = getDaysInMonth(anno, mese)
   const isConfermato = readOnly || status === 'confermato' || status === 'chiuso'
   const isEdile = !!(profile?.is_edile)
-  const giustificativi = getGiustificativi(isEdile)
+  const elencoCausali = getElencoCausali(isEdile)
 
   // Struttura CIG per cantiere: per ogni cantiere, per ogni giorno, per ogni dipendente
   type CigDayEntry = { codice: string; ore: number; meteo?: string }
@@ -2106,9 +2338,9 @@ export default function FoglioPresenze({
       {/* Legenda */}
       {showLegenda && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-bold text-amber-900 mb-2">Legenda Giustificativi</h3>
+          <h3 className="text-sm font-bold text-amber-900 mb-2">Legenda Causali</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1">
-            {giustificativi.map(g => {
+            {elencoCausali.map(g => {
               const cs = getCausaleStyle(g.codice)
               return (
                 <div key={g.codice} className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1.5 ${cs.bg || 'bg-amber-50'}`}>
@@ -2135,23 +2367,70 @@ export default function FoglioPresenze({
         </div>
       )}
 
-      {/* Dipendenti */}
-      {initialDipendenti.map(dip => (
-        <DipendenteSection
-          key={dip.id}
-          dip={dip}
-          daysInMonth={daysInMonth}
-          foglioStatus={status}
-          activeCell={activeCell}
-          onToggleCell={setActiveCell}
-          cantieri={cantieri}
-          additionalSedi={additionalSedi}
-          profile={profile}
-          isEdile={isEdile}
-          anno={anno}
-          mese={mese}
-        />
-      ))}
+      {/* Mobile Employee Selector */}
+      <div className="block md:hidden mb-2">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+            <Users className="h-3 w-3" />
+            Seleziona Dipendente
+          </label>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+             {initialDipendenti.map(dip => (
+               <button
+                 key={dip.id}
+                 onClick={() => setSelectedDipMobile(dip.id)}
+                 className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                   selectedDipMobile === dip.id 
+                    ? 'bg-[#D32F2F] text-white border-[#D32F2F] shadow-lg shadow-red-900/10' 
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                 }`}
+               >
+                 {dip.cognome_nome}
+               </button>
+             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Version */}
+      <div className="hidden md:block space-y-6">
+        {initialDipendenti.map(dip => (
+          <DipendenteSectionDesktop
+            key={dip.id}
+            dip={dip}
+            daysInMonth={daysInMonth}
+            foglioStatus={status}
+            activeCell={activeCell}
+            onToggleCell={setActiveCell}
+            cantieri={cantieri}
+            additionalSedi={additionalSedi}
+            profile={profile}
+            isEdile={isEdile}
+            anno={anno}
+            mese={mese}
+          />
+        ))}
+      </div>
+
+      {/* Mobile Version */}
+      <div className="block md:hidden">
+        {initialDipendenti.filter(d => d.id === selectedDipMobile).map(dip => (
+          <DipendenteSectionMobile
+            key={dip.id}
+            dip={dip}
+            daysInMonth={daysInMonth}
+            foglioStatus={status}
+            activeCell={activeCell}
+            onToggleCell={setActiveCell}
+            cantieri={cantieri}
+            additionalSedi={additionalSedi}
+            profile={profile}
+            isEdile={isEdile}
+            anno={anno}
+            mese={mese}
+          />
+        ))}
+      </div>
 
       {/* CIG Dashboard Modal */}
       {showCigDash && (
