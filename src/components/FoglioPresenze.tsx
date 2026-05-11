@@ -279,7 +279,9 @@ function GiornataCell({
   mese,
   anno,
   isActive,
-  onToggle
+  onToggle,
+  isStraordinario = false,
+  isOverLimit = false
 }: {
   dipendente_id: string
   giorno: number
@@ -292,6 +294,8 @@ function GiornataCell({
   anno: number
   isActive: boolean
   onToggle: (open: boolean) => void
+  isStraordinario?: boolean
+  isOverLimit?: boolean
 }) {
   const [valore, setValore] = useState(valoreIniziale !== null ? String(valoreIniziale) : '')
   const [selectedDays, setSelectedDays] = useState<number[]>([giorno])
@@ -356,7 +360,11 @@ function GiornataCell({
     <div className="relative h-full w-full group">
       <div
         onClick={() => onToggle(!isActive)}
-        className={`flex h-full w-full min-h-[44px] cursor-pointer items-center justify-center transition-colors hover:bg-slate-100/80 ${isOptimistic ? 'animate-pulse text-indigo-400 font-bold bg-indigo-50/20' : ''}`}
+        className={`flex h-full w-full min-h-[44px] cursor-pointer items-center justify-center transition-all hover:bg-slate-100/80 
+          ${isOverLimit ? 'bg-red-100 text-red-800' : isStraordinario ? 'bg-amber-100 text-amber-800' : ''}
+          ${isOptimistic ? 'animate-pulse text-indigo-400 font-bold bg-indigo-50/20' : ''}
+          ${!isOverLimit && !isStraordinario && !isOptimistic ? 'text-slate-900' : ''}
+        `}
       >
         {currentValore}
       </div>
@@ -1404,8 +1412,10 @@ function DipendenteSectionDesktop({
                     return acc + (c?.ore ?? 0)
                   }, 0)
                   const effectiveOre = origOre !== null ? Math.max(0, origOre - totCausali) : null
-                  const isStraordinario = (giornata?.ore_lavorate || 0) > (giornata?.ore_contrattuali || 0)
-                  const isOverLimit = (giornata?.ore_lavorate || 0) > 12
+                  const lavorateNum = Number(giornata?.ore_lavorate || 0)
+                  const contrattualiNum = Number(giornata?.ore_contrattuali || 0)
+                  const isStraordinario = lavorateNum > contrattualiNum
+                  const isOverLimit = lavorateNum > 12
                   
                   let cellBg = ''
                   if (isOverLimit) cellBg = 'bg-red-100'
@@ -1452,8 +1462,8 @@ function DipendenteSectionDesktop({
                   <span className="block text-[8px] text-blue-600 font-normal uppercase tracking-wider">GG Lav</span>
                   {summary.giorniLavorati}
                 </td>
-                <td className="bg-amber-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
-                  <span className="block text-[8px] text-amber-600 font-normal uppercase tracking-wider">Straor.</span>
+                <td className={`${summary.straordinario > 0 ? 'bg-amber-100' : 'bg-amber-50'} border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm`}>
+                  <span className={`block text-[8px] ${summary.straordinario > 0 ? 'text-amber-700' : 'text-amber-600'} font-normal uppercase tracking-wider`}>Straor.</span>
                   {summary.straordinario}
                 </td>
                 <td className="bg-blue-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
@@ -1999,8 +2009,14 @@ function DipendenteSectionMobile({
               const isF = isFestivo(anno, mese, d)
               const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
               const giornata = getGiornata(d)
-              const isStraordinario = (giornata?.ore_lavorate || 0) > (giornata?.ore_contrattuali || 0)
-              const isOverLimit = (giornata?.ore_lavorate || 0) > 12
+              const lavorateNum = Number(giornata?.ore_lavorate || 0)
+              const contrattualiNum = Number(giornata?.ore_contrattuali || 0)
+              const isStraordinario = lavorateNum > contrattualiNum
+              const isOverLimit = lavorateNum > 12
+              
+              let dayColor = d % 2 === 0 ? 'bg-slate-50' : 'bg-white'
+              if (isDomenica) dayColor = 'bg-red-50/50'
+              else if (isF) dayColor = 'bg-yellow-50/50'
               
               let cellBg = ''
               if (isOverLimit) cellBg = 'bg-red-100/50'
@@ -2028,6 +2044,8 @@ function DipendenteSectionMobile({
                         daysInMonth={daysInMonth} mese={mese} anno={anno}
                         isActive={activeCell === `mob-lav-${dip.id}-${d}`}
                         onToggle={(open) => onToggleCell(open ? `mob-lav-${dip.id}-${d}` : null)}
+                        isStraordinario={isStraordinario}
+                        isOverLimit={isOverLimit}
                       />
                     )}
                   </td>
