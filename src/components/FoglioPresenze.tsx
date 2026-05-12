@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useTransition, useEffect, useRef } from 'react'
-import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle, RotateCcw, StickyNote, ExternalLink } from 'lucide-react'
+import { useLoading } from '@/components/LoadingProvider'
 
-import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata } from '@/app/actions/confirm'
+import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata, reopenFoglio } from '@/app/actions/confirm'
 
 // — Color Map: ogni codice ha la sua tavolozza coerente —
 const CAUSALE_COLORS: Record<string, { bg: string; text: string; border: string; dot: string; riepilogoBg: string; riepilogoText: string }> = {
@@ -102,7 +104,10 @@ interface FoglioPresenzaProps {
   mese: number
   status: string
   dipendenti: Dipendente[]
+  note?: string | null
+  cigFasi?: { cantiere_cod: string; fase_lavorativa: string }[]
   readOnly?: boolean
+  isAdmin?: boolean
   onBack?: () => void
 }
 
@@ -170,6 +175,7 @@ function DayPickerGrid({
   minDate = 1,
   selectedDays,
   workedDays = [],
+  anchorDay,
   onChange
 }: {
   anno: number
@@ -178,6 +184,7 @@ function DayPickerGrid({
   minDate?: number
   selectedDays: number[]
   workedDays?: number[]
+  anchorDay?: number
   onChange: (days: number[]) => void
 }) {
   const startDay = new Date(anno, mese - 1, 1).getDay()
@@ -197,12 +204,23 @@ function DayPickerGrid({
 
   const selectAll = () => {
     const all = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(d => d >= minDate)
-    onChange(all)
+    const isAlreadyAll = all.every(d => selectedDays.includes(d)) && selectedDays.length === all.length
+    if (isAlreadyAll) {
+      onChange([anchorDay || minDate])
+    } else {
+      onChange(all)
+    }
   }
 
   const selectWorked = () => {
     const valid = workedDays.filter(d => d >= minDate)
-    if (valid.length > 0) onChange(valid)
+    if (valid.length === 0) return
+    const isAlreadyWorked = valid.every(d => selectedDays.includes(d)) && selectedDays.length === valid.length
+    if (isAlreadyWorked) {
+      onChange([anchorDay || minDate])
+    } else {
+      onChange(valid)
+    }
   }
 
   return (
@@ -302,6 +320,7 @@ function GiornataCell({
   const [error, setError] = useState<string | null>(null)
   const [saving, startSave] = useTransition()
   const [optimisticValore, setOptimisticValore] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Sync state with server props
   useEffect(() => {
@@ -342,6 +361,7 @@ function GiornataCell({
 
     setOptimisticValore(finalValore)
     onToggle(false)
+    setShowDeleteConfirm(false)
 
     startSave(async () => {
       try {
@@ -350,6 +370,14 @@ function GiornataCell({
         setError(e.message)
       }
     })
+  }
+
+  function handleClear() {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true)
+      return
+    }
+    handleSave('')
   }
 
   const label = campo === 'ore_lavorate' ? 'Ore Lavorate' : 'Di cui notturne'
@@ -403,17 +431,18 @@ function GiornataCell({
                     )}
                   </div>
 
-              <div className="pt-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
-                <DayPickerGrid
-                  anno={anno}
-                  mese={mese}
-                  daysInMonth={daysInMonth}
-                  minDate={1}
-                  selectedDays={selectedDays}
-                  onChange={setSelectedDays}
-                />
-              </div>
+                <div className="pt-1">
+                  <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block text-center">Applica ai giorni selezionati</label>
+                  <DayPickerGrid
+                    anno={anno}
+                    mese={mese}
+                    daysInMonth={daysInMonth}
+                    minDate={1}
+                    anchorDay={giorno}
+                    selectedDays={selectedDays}
+                    onChange={setSelectedDays}
+                  />
+                </div>
             </div>
 
             {error && (
@@ -422,42 +451,60 @@ function GiornataCell({
               </div>
             )}
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+              {/* Tasto Cancella (Stile Causal con Cestino) */}
+              {(campo === 'ore_notturne' || valore !== '') ? (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleClear()
+                  }}
+                  onMouseLeave={() => setShowDeleteConfirm(false)}
+                  title={showDeleteConfirm ? "Conferma cancellazione" : "Rimuovi questo valore"}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all border ${
+                    showDeleteConfirm 
+                      ? 'bg-red-600 text-white border-red-700 shadow-inner' 
+                      : 'text-red-500 border-red-100 hover:text-red-700 hover:bg-red-50'
+                  }`}
+                >
+                  {showDeleteConfirm ? (
+                    <>Sei sicuro?</>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Cancella
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => onToggle(false)}
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+                  onClick={() => { onToggle(false); setError(null); setShowDeleteConfirm(false) }}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
                 >
                   Annulla
                 </button>
-                {campo === 'ore_notturne' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setValore('')
-                      handleSave('')
-                    }}
-                    disabled={saving}
-                    className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
-                  >
-                    Cancella
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => handleSave()}
                   disabled={saving}
-                  className="flex-[2] rounded-xl bg-[#D32F2F] px-4 py-2.5 text-[11px] font-bold text-white hover:bg-[#b02727] disabled:opacity-50 shadow-lg shadow-red-900/10 transition-all"
+                  className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50 shadow-lg shadow-slate-900/10 transition-all"
                 >
                   {saving ? 'Salvataggio...' : 'Conferma'}
                 </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
-    )
-  }
+        </div>
+      )}
+    </div>
+  )
+}
 
 function getCantiereColor(cod: string | null) {
   if (!cod || cod === '1') return { bg: '', text: 'text-slate-600', border: '' }
@@ -575,6 +622,7 @@ function SedeCell({
         if (c.comune) labelParts.push(c.comune)
         if (c.prov) labelParts.push(c.prov)
         if (c.committente) labelParts.push(c.committente)
+        if (c.distanza_km) labelParts.push(`(${c.distanza_km.toFixed(1)} KM)`)
 
         return { 
           value: identifier || c.cantiere, 
@@ -635,6 +683,7 @@ function SedeCell({
                   mese={mese}
                   daysInMonth={daysInMonth}
                   minDate={1}
+                  anchorDay={giorno}
                   selectedDays={selectedDays}
                   workedDays={workedDays}
                   onChange={setSelectedDays}
@@ -1008,6 +1057,7 @@ function CausaleCell({
                       mese={mese}
                       daysInMonth={daysInMonth}
                       minDate={1}
+                      anchorDay={giorno}
                       selectedDays={selectedDays}
                       workedDays={workedDays}
                       onChange={setSelectedDays}
@@ -1181,7 +1231,7 @@ interface FoglioPresenzaProps {
 }
 
 function DipendenteSectionDesktop({ 
-  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese 
+  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 
 }: { 
   dip: Dipendente, 
   daysInMonth: number, 
@@ -1193,13 +1243,14 @@ function DipendenteSectionDesktop({
   profile: any,
   isEdile: boolean,
   anno: number,
-  mese: number
+  mese: number,
+  isAdmin?: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
   const [clearingRows, setClearingRows] = useState<number[]>([])
   const [confirmingRow, setConfirmingRow] = useState<number | null>(null)
   const [causali, setCausali] = useState(dip.causali)
-  const isConfermato = foglioStatus === 'confermato' || foglioStatus === 'chiuso'
+  const isConfermato = (foglioStatus === 'confermato' || foglioStatus === 'chiuso') && !isAdmin
 
   // Auto-fill SEDE logic
   useEffect(() => {
@@ -1375,7 +1426,16 @@ function DipendenteSectionDesktop({
                 })}
                 <th className="bg-slate-800 px-2 py-2 text-center min-w-[45px] font-bold border-l border-slate-600 text-[11px]">TOT</th>
                 {/* 4x4 Summary Grid Headers */}
-                <th colSpan={4} className="bg-slate-800 px-2 py-3 text-sm font-bold text-center border-l border-slate-600">Riepilogo Mensile</th>
+                <th 
+                  colSpan={4} 
+                  onClick={() => onToggleCell(`gis-${dip.id}`)}
+                  className="bg-slate-800 px-2 py-3 text-sm font-bold text-center border-l border-slate-600 cursor-pointer hover:bg-slate-700 transition-colors group"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span>Riepilogo Mensile</span>
+                    <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1454,11 +1514,11 @@ function DipendenteSectionDesktop({
                   }, 0)}
                 </td>
                 {/* Summary Row 1 */}
-                <td className="bg-blue-50 border-l-2 border-l-slate-400 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
+                <td className="bg-blue-50 border-l-2 border-l-slate-400 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => onToggleCell(`gis-${dip.id}`)}>
                   <span className="block text-[8px] text-blue-600 font-normal uppercase tracking-wider">HH Lav</span>
                   {summary.ordinarie}
                 </td>
-                <td className="bg-blue-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm">
+                <td className="bg-blue-50 border-l border-slate-200 px-1 py-2 text-center font-bold text-slate-900 min-w-[75px] text-sm cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => onToggleCell(`gis-${dip.id}`)}>
                   <span className="block text-[8px] text-blue-600 font-normal uppercase tracking-wider">GG Lav</span>
                   {summary.giorniLavorati}
                 </td>
@@ -1744,7 +1804,9 @@ function CigCantiereCard({
   cantiereCod: string
   data: {
     oreTotali: number
+    oreLavorate: number
     orePerGiorno: Record<number, number>
+    lavoratePerGiorno: Record<number, number>
     dipPerGiorno: Record<number, number>
     dipendenti: { nome: string; giorni: Record<number, { codice: string; ore: number; meteo?: string }> }[]
   }
@@ -1763,7 +1825,8 @@ function CigCantiereCard({
   // Colonne che hanno almeno 1 ora CIG (per evidenziare)
   const activeDays = new Set(Object.keys(data.orePerGiorno).map(Number))
 
-  const colW = 'min-w-[30px] max-w-[36px]'
+  const colW = '' // Flexible
+  const labelW = 'w-24 md:w-32' // Smaller on mobile, fixed on desktop
 
   return (
     <div className={`rounded-xl border overflow-hidden ${
@@ -1778,7 +1841,7 @@ function CigCantiereCard({
           {cantiereInfo?.cantiere && (
             <span className="text-white/90 font-semibold text-sm uppercase">{cantiereInfo.cantiere}</span>
           )}
-          <span className="ml-2 text-white/70 text-xs font-medium">
+          <span className="ml-4 text-white/90 text-xs font-bold bg-white/20 px-3 py-1 rounded-lg">
             Tot. {data.oreTotali}h CIG
           </span>
         </div>
@@ -1791,15 +1854,15 @@ function CigCantiereCard({
 
       {/* === Tabella calendario === */}
       <div className="overflow-x-auto">
-        <table className="text-[11px] w-full border-collapse">
+        <table className="text-[11px] w-full border-collapse table-fixed">
           <thead>
             {/* Riga ORE — totale per giorno */}
             <tr className="bg-[#4CAF50] border-b border-green-400">
-              <td className="sticky left-0 z-10 bg-[#4CAF50] text-white font-bold px-2 py-1 min-w-[110px] border-r border-green-400">
+              <td className={`sticky left-0 z-10 bg-[#4CAF50] text-white font-bold px-2 py-1 ${labelW} border-r border-green-400`}>
                 ore
               </td>
               {days.map(d => (
-                <td key={d} className={`${colW} text-center py-1 font-bold text-white border-r border-green-400/50 ${
+                <td key={d} className={`text-center py-1 font-bold text-white border-r border-green-400/50 ${
                   activeDays.has(d) ? 'bg-[#388E3C]' : ''
                 }`}>
                   {data.orePerGiorno[d] || 0}
@@ -1808,22 +1871,11 @@ function CigCantiereCard({
             </tr>
 
             {/* Riga DIP — n. dipendenti CIG per giorno */}
-            <tr className="bg-[#66BB6A] border-b border-green-300">
-              <td className="sticky left-0 z-10 bg-[#66BB6A] text-white font-bold px-2 py-1 min-w-[110px] border-r border-green-300">
-                dip
-              </td>
-              {days.map(d => (
-                <td key={d} className={`${colW} text-center py-1 font-bold text-white border-r border-green-300/50 ${
-                  activeDays.has(d) ? 'bg-[#43A047]' : ''
-                }`}>
-                  {data.dipPerGiorno[d] || 0}
-                </td>
-              ))}
-            </tr>
+
 
             {/* Riga numerazione giorni */}
             <tr className="bg-slate-100 border-b border-slate-200">
-              <td className="sticky left-0 z-10 bg-slate-100 px-2 py-1 min-w-[110px] text-slate-500 font-bold text-[10px] border-r border-slate-200">
+              <td className={`sticky left-0 z-10 bg-slate-100 px-2 py-1 ${labelW} text-slate-500 font-bold text-[10px] border-r border-slate-200 truncate`}>
                 {cantiereInfo?.cantiere
                   ? cantiereInfo.cantiere.substring(0, 18)
                   : cantiereCod}
@@ -1839,7 +1891,7 @@ function CigCantiereCard({
                 else if (isF) cellClass = 'bg-yellow-50 text-yellow-600'
 
                 return (
-                  <td key={d} className={`${colW} text-center py-0.5 font-bold border-r border-slate-200 leading-tight relative ${cellClass}`}>
+                  <td key={d} className={`text-center py-0.5 font-bold border-r border-slate-200 leading-tight relative ${cellClass}`}>
                     <div className="text-[10px]">{d}</div>
                     <div className="text-[8px] opacity-70">{dayName}</div>
                     {/* Indicatore festivo su domenica */}
@@ -1856,7 +1908,7 @@ function CigCantiereCard({
             {data.dipendenti.map((dip, di) => (
               <tr key={di} className={di % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
                 {/* Nome dipendente */}
-                <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 min-w-[110px] font-semibold text-slate-700 border-r border-slate-100 truncate max-w-[110px]">
+                <td className={`sticky left-0 z-10 bg-inherit px-2 py-1.5 ${labelW} font-semibold text-slate-700 border-r border-slate-100 truncate`}>
                   {dip.nome}
                 </td>
                 {/* Celle per giorno */}
@@ -1866,7 +1918,7 @@ function CigCantiereCard({
                   return (
                     <td
                       key={d}
-                      className={`${colW} text-center py-0.5 border-r border-slate-100 font-mono font-bold text-[9px] leading-tight ${
+                      className={`text-center py-0.5 border-r border-slate-100 font-mono font-bold text-[9px] leading-tight ${
                         entry ? `${cs!.bg} ${cs!.text}` : ''
                       }`}
                       title={entry?.meteo ? `${entry.codice} — ${entry.ore}h — ${entry.meteo}` : entry ? `${entry.codice} ${entry.ore}h` : undefined}
@@ -1919,7 +1971,7 @@ function CigCantiereCard({
 
 
 function DipendenteSectionMobile({
-  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese 
+  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 
 }: { 
   dip: Dipendente, 
   daysInMonth: number, 
@@ -1931,10 +1983,11 @@ function DipendenteSectionMobile({
   profile: any,
   isEdile: boolean,
   anno: number,
-  mese: number
+  mese: number,
+  isAdmin?: boolean
 }) {
   const [causali, setCausali] = useState(dip.causali)
-  const isConfermato = foglioStatus === 'confermato' || foglioStatus === 'chiuso'
+  const isConfermato = (foglioStatus === 'confermato' || foglioStatus === 'chiuso') && !isAdmin
 
   useEffect(() => {
     setCausali(dip.causali)
@@ -2100,11 +2153,16 @@ function DipendenteSectionMobile({
         </table>
       </div>
 
-      {/* Totals Summary at Bottom */}
-      <div className="bg-slate-50 p-4 border-t-2 border-slate-200">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 text-center">Riepilogo Mensile</h3>
+      <div 
+        onClick={() => onToggleCell(`gis-${dip.id}`)}
+        className="bg-slate-50 p-4 border-t-2 border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors group"
+      >
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 text-center flex items-center justify-center gap-2">
+          Riepilogo Mensile
+          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </h3>
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 flex justify-between items-center">
+          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 flex justify-between items-center cursor-pointer hover:bg-blue-100" onClick={() => onToggleCell(`gis-${dip.id}`)}>
             <span className="text-[10px] font-bold text-blue-700">HH LAV</span>
             <span className="text-sm font-black text-blue-900">{summary.ordinarie}</span>
           </div>
@@ -2140,11 +2198,208 @@ function DipendenteSectionMobile({
 }
 
 
+function GisSummaryModal({ dip, anno, mese, isEdile, onClose }: { dip: Dipendente, anno: number, mese: number, isEdile: boolean, onClose: () => void }) {
+  const daysInMonth = getDaysInMonth(anno, mese)
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+
+  const summary = {
+    oreLavorate: 0,
+    oreTeoriche: 0,
+    oreStraordinario: 0,
+    giorniLavorati: 0,
+    giorniLavorabili: 0,
+    oreAssenza: 0,
+    oreGiustificateTotali: 0,
+    causali: {} as Record<string, number>
+  }
+
+  days.forEach(d => {
+    const g = dip.giornate.find(x => x.giorno === d)
+    const oreContrattuali = g?.ore_contrattuali || 0
+    const oreLorde = g?.ore_lavorate || 0
+    
+    summary.oreTeoriche += oreContrattuali
+    if (oreContrattuali > 0) summary.giorniLavorabili++
+
+    let oreCausaliDay = 0
+    let oreAssenzaGisDay = 0
+    
+    for (let n = 1; n <= 5; n++) {
+      const c = dip.causali.find(x => x.giorno === d && x.numero === n)
+      if (c?.ore && c.codice) {
+        summary.causali[c.codice] = (summary.causali[c.codice] || 0) + c.ore
+        oreCausaliDay += c.ore
+        summary.oreGiustificateTotali += c.ore
+        
+        const isFigurativa = isEdile && (c.codice === '*FD' || c.codice === '*PD')
+        const isAssenzaStandard = [
+          '*FE', '*PE', '*ML', '*IN', '*RO', '*EF', '*PA', '*NP', '*DS', '*MT', '*MO', '*AT', 'GEN',
+          '*GG', '*GH', '*GJ', '*GK'
+        ].includes(c.codice)
+        
+        if (!isFigurativa && isAssenzaStandard) {
+          oreAssenzaGisDay += c.ore
+        }
+      }
+    }
+
+    const workedEffective = Math.max(0, oreLorde - oreCausaliDay)
+    summary.oreLavorate += workedEffective
+    if (workedEffective > 0) summary.giorniLavorati++
+
+    if (oreLorde > oreContrattuali) {
+      summary.oreStraordinario += (oreLorde - oreContrattuali)
+    }
+    
+    summary.oreAssenza += oreAssenzaGisDay
+  })
+
+  const nonGiustificate = Math.max(0, summary.oreTeoriche - (summary.oreLavorate + summary.oreGiustificateTotali))
+
+  const formatNum = (n: number) => n.toFixed(2).replace('.', ',')
+  const getLabel = (code: string) => {
+    const elenco = getElencoCausali(isEdile)
+    const cig = CIG_OPZIONI
+    return elenco.find(x => x.codice === code)?.label || cig.find(x => x.codice === code)?.label || code
+  }
+
+  return (
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+        {/* Header */}
+        <div className="bg-slate-900 px-10 py-8 text-white flex justify-between items-center">
+          <div className="flex items-center gap-6">
+            <div className="bg-yellow-400 p-3 rounded-2xl text-slate-900 shadow-lg shadow-yellow-400/20">
+              <CheckCircle className="h-10 w-10" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight">Riepilogo Controllo GIS</h2>
+              <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mt-1">
+                {dip.cognome_nome} <span className="mx-2 opacity-30">•</span> MAT. {dip.matricola}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl transition-all">
+            <span className="text-xl font-bold">✕</span>
+          </button>
+        </div>
+        
+        {/* Body */}
+        <div className="p-6 md:p-12 grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-16 overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-none">
+          {/* Left Column (Main Totals) */}
+          <div className="md:col-span-7">
+            <table className="w-full">
+              <thead>
+                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                  <th className="text-left pb-4 md:pb-6">Tipo</th>
+                  <th className="text-center pb-4 md:pb-6">Giorni</th>
+                  <th className="text-right pb-4 md:pb-6">Ore</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                <tr className="border-b border-slate-50">
+                  <td className="py-4 md:py-6 font-bold text-slate-700 md:text-base">Lavorate</td>
+                  <td className="py-4 md:py-6 text-center">
+                    <span className="bg-slate-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-slate-900 text-xs md:text-sm">
+                      {formatNum(summary.giorniLavorati)}
+                    </span>
+                  </td>
+                  <td className="py-4 md:py-6 text-right">
+                    <span className="bg-slate-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-slate-900 text-xs md:text-sm">
+                      {formatNum(summary.oreLavorate)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-50">
+                  <td className="py-4 md:py-6 font-bold text-slate-700 md:text-base">Straordinario</td>
+                  <td className="py-4 md:py-6 text-center text-slate-300">—</td>
+                  <td className="py-4 md:py-6 text-right">
+                    <span className="bg-amber-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-amber-700 text-xs md:text-sm">
+                      {formatNum(summary.oreStraordinario)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-50">
+                  <td className="py-4 md:py-6 font-bold text-slate-700 md:text-base">Assenze</td>
+                  <td className="py-4 md:py-6 text-center text-slate-300">—</td>
+                  <td className="py-4 md:py-6 text-right">
+                    <span className="bg-slate-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-slate-900 text-xs md:text-sm">
+                      {formatNum(summary.oreAssenza)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-50">
+                  <td className="py-4 md:py-6 font-bold text-slate-700 md:text-base">Lavorabili / teoriche</td>
+                  <td className="py-4 md:py-6 text-center">
+                    <span className="bg-blue-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-blue-700 text-xs md:text-sm">
+                      {formatNum(summary.giorniLavorabili)}
+                    </span>
+                  </td>
+                  <td className="py-4 md:py-6 text-right">
+                    <span className="bg-blue-50 px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-blue-700 text-xs md:text-sm">
+                      {formatNum(summary.oreTeoriche)}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-4 md:py-6 font-bold text-slate-700 md:text-base">Non giustificate</td>
+                  <td className="py-4 md:py-6 text-center text-slate-300">—</td>
+                  <td className="py-4 md:py-6 text-right">
+                    <span className={`px-3 md:px-5 py-1.5 md:py-2 rounded-xl font-black text-xs md:text-sm ${nonGiustificate > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-200'}`}>
+                      {formatNum(nonGiustificate)}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Right Column (Causals Detail) */}
+          <div className="md:col-span-5 md:border-l md:border-slate-100 md:pl-16">
+            <table className="w-full">
+              <thead>
+                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                  <th className="text-left pb-4 md:pb-6">Caus</th>
+                  <th className="text-left pb-4 md:pb-6">Descrizione</th>
+                  <th className="text-right pb-4 md:pb-6">Quantità</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {Object.entries(summary.causali).length === 0 && (
+                  <tr><td colSpan={3} className="py-8 text-center text-slate-300 italic">Nessuna causale</td></tr>
+                )}
+                {Object.entries(summary.causali).map(([code, val]) => (
+                  <tr key={code} className="border-b border-slate-50">
+                    <td className="py-3 md:py-5 font-black text-blue-600">{code}</td>
+                    <td className="py-3 md:py-5 text-slate-500 font-medium">{getLabel(code)}</td>
+                    <td className="py-3 md:py-5 text-right font-black text-slate-900">{formatNum(val)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Footer Note */}
+        <div className="bg-slate-50 px-12 py-8 border-t border-slate-100 flex items-center gap-4 text-slate-400">
+          <Info className="h-5 w-5 text-slate-300" />
+          <p className="text-xs font-medium italic">
+            Questo riepilogo segue la logica di calcolo del software GIS. Le causali figurative (*FD, *PD) non sono incluse nel totale assenze.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // Main component
 export default function FoglioPresenze({
   foglioId, azienda, sede, anno, mese, status, dipendenti: initialDipendenti,
-  cantieri, additionalSedi, profile, cigFasi: initialCigFasi, readOnly, onBack
+  cantieri, additionalSedi, profile, cigFasi: initialCigFasi, note: initialNote, readOnly, isAdmin = false, onBack
 }: FoglioPresenzaProps) {
+  const { setLoading } = useLoading()
+  const router = useRouter()
   const [selectedDipMobile, setSelectedDipMobile] = useState(initialDipendenti[0]?.id)
   const [activeCell, setActiveCell] = useState<string | null>(null)
   const [showLegenda, setShowLegenda] = useState(false)
@@ -2155,9 +2410,14 @@ export default function FoglioPresenze({
   const [cigFasi, setCigFasi] = useState<{ cantiere_cod: string; fase_lavorativa: string }[]>(initialCigFasi || [])
   const [savingFase, setSavingFase] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  
+  // Note per lo studio
+  const [note, setNote] = useState(initialNote || '')
+  const [showNote, setShowNote] = useState(false)
+  const [savingNote, setSavingNote] = useState(false)
 
   const daysInMonth = getDaysInMonth(anno, mese)
-  const isConfermato = readOnly || status === 'confermato' || status === 'chiuso'
+  const isConfermato = (readOnly || status === 'confermato' || status === 'chiuso') && !isAdmin
   const isEdile = !!(profile?.is_edile)
   const elencoCausali = getElencoCausali(isEdile)
 
@@ -2165,7 +2425,9 @@ export default function FoglioPresenze({
   type CigDayEntry = { codice: string; ore: number; meteo?: string }
   type CigCantiereData = {
     oreTotali: number
-    orePerGiorno: Record<number, number>   // giorno → ore totali
+    oreLavorate: number
+    orePerGiorno: Record<number, number>   // giorno → ore CIG totali
+    lavoratePerGiorno: Record<number, number> // giorno → ore LAV totali
     dipPerGiorno: Record<number, number>   // giorno → n. dipendenti coinvolti
     dipendenti: {
       nome: string
@@ -2179,14 +2441,31 @@ export default function FoglioPresenze({
       dip.giornate.forEach(g => {
         const turno = g.turno
         if (!turno) return
+
+        // 1. Check for CIG causals
         const cigCausali = (dip.causali || []).filter(c =>
           c.giorno === g.giorno && (CIG_CODES as readonly string[]).includes(c.codice || '')
         )
-        if (cigCausali.length === 0) return
+        
+        // 2. Worked hours (Ordinary) for this cantiere day
+        // Worked hours are WorkedLorde - ALL Causals (CIG + others)
+        const totCausaliDay = (dip.causali || [])
+          .filter(c => c.giorno === g.giorno)
+          .reduce((acc, c) => acc + (c.ore || 0), 0)
+        const workedOrd = Math.max(0, (g.ore_lavorate || 0) - totCausaliDay)
 
-        if (!map[turno]) map[turno] = { oreTotali: 0, orePerGiorno: {}, dipPerGiorno: {}, dipendenti: [] }
+        if (cigCausali.length === 0 || turno === '1') return
+
+        if (!map[turno]) map[turno] = { oreTotali: 0, oreLavorate: 0, orePerGiorno: {}, lavoratePerGiorno: {}, dipPerGiorno: {}, dipendenti: [] }
         const ct = map[turno]
 
+        // Add worked ordinary hours
+        ct.oreLavorate += workedOrd
+        if (workedOrd > 0) {
+          ct.lavoratePerGiorno[g.giorno] = (ct.lavoratePerGiorno[g.giorno] || 0) + workedOrd
+        }
+
+        // Add CIG hours
         cigCausali.forEach(c => {
           const ore = c.ore || 0
           ct.oreTotali += ore
@@ -2220,6 +2499,7 @@ export default function FoglioPresenze({
 
   async function handleSaveFase(cantiereCod: string, fase: string) {
     setSavingFase(true)
+    setLoading(true)
     try {
       const { saveCigFase } = await import('@/app/actions/cig')
       await saveCigFase(foglioId, cantiereCod, fase)
@@ -2231,6 +2511,7 @@ export default function FoglioPresenze({
       setError(`Errore salvataggio fase: ${e.message}`)
     } finally {
       setSavingFase(false)
+      setLoading(false)
     }
   }
 
@@ -2247,6 +2528,7 @@ export default function FoglioPresenze({
   async function processConfirm() {
     setShowConfirmModal(false)
     setError(null)
+    setLoading(true)
     console.log("[processConfirm] Avvio invio definitivo...")
     
     startSend(async () => {
@@ -2257,8 +2539,24 @@ export default function FoglioPresenze({
       } catch (e: any) {
         console.error("[processConfirm] Errore:", e)
         setError(e.message || "Errore durante l'invio")
+      } finally {
+        setLoading(false)
       }
     })
+  }
+
+  async function handleSaveNote() {
+    setSavingNote(true)
+    setLoading(true)
+    try {
+      const { saveFoglioNote } = await import('@/app/actions/cig')
+      await saveFoglioNote(foglioId, note)
+    } catch (e: any) {
+      setError(`Errore salvataggio note: ${e.message}`)
+    } finally {
+      setSavingNote(false)
+      setLoading(false)
+    }
   }
 
   return (
@@ -2308,10 +2606,31 @@ export default function FoglioPresenze({
                   : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
               }`}
             >
-              🏗️ Dashboard CIG
+              Dashboard CIG
               {!cigValid && <span className="ml-1 bg-amber-500 text-white rounded-full px-1.5 py-0.5 text-[9px] font-black">{cantieriSenzaFase.length}</span>}
             </button>
           )}
+
+          {/* Note per lo Studio */}
+          <button
+            onClick={() => setShowNote(!showNote)}
+            className={`flex items-center gap-1.5 rounded-xl border-2 px-3 py-2 text-xs font-bold transition-all relative group ${
+              note.trim() 
+                ? 'border-indigo-400 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-600/10' 
+                : 'border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50/30'
+            }`}
+          >
+            {note.trim() && (
+              <span className="absolute -top-1.5 -right-1.5 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+              </span>
+            )}
+            <StickyNote className={`h-3.5 w-3.5 ${note.trim() ? 'text-indigo-600' : 'text-indigo-400'}`} />
+            <span className={note.trim() ? 'text-indigo-700' : 'text-indigo-600'}>
+              NOTE {note.trim() ? '(Presenti)' : ''}
+            </span>
+          </button>
 
           {/* Legenda toggle */}
           <button
@@ -2321,6 +2640,34 @@ export default function FoglioPresenze({
             <Info className="h-3.5 w-3.5" />
             Legenda
           </button>
+
+          {/* REOPEN BUTTON FOR ADMINS */}
+          {isAdmin && (status === 'confermato' || status === 'chiuso') && (
+            <button
+              onClick={async () => {
+                if (confirm("Vuoi davvero riaprire questo segnaore? Tornerà in stato 'Bozza' e il cliente potrà modificarlo.")) {
+                  setLoading(true)
+                  try {
+                    const res = await reopenFoglio(foglioId)
+                    if (res.success) {
+                      router.refresh()
+                      setTimeout(() => {
+                        if (onBack) onBack()
+                      }, 500) // Give a moment for refresh to propagate
+                    }
+                  } catch (e: any) {
+                    alert(e.message)
+                  } finally {
+                    setLoading(false)
+                  }
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors shadow-sm"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Riapri Segnaore
+            </button>
+          )}
 
           {/* Confirm button */}
           {!isConfermato && !sent && (
@@ -2337,11 +2684,60 @@ export default function FoglioPresenze({
         </div>
       </div>
 
+      {/* Note per lo Studio (Collapsible Card) */}
+      {showNote && (
+        <div className="bg-amber-50/50 rounded-2xl border border-amber-100 p-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+           <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                 <div className="p-1.5 bg-amber-100 rounded-lg text-amber-700">
+                    <Info className="h-4 w-4" />
+                 </div>
+                 <h3 className="text-sm font-bold text-amber-900">Comunicazioni allo Studio Professionale</h3>
+              </div>
+              <button onClick={() => setShowNote(false)} className="text-amber-400 hover:text-amber-600 transition-colors">
+                 <ChevronDown className="h-5 w-5 rotate-180" />
+              </button>
+           </div>
+           <p className="text-xs text-amber-700/80 mb-3 leading-relaxed">
+              Utilizza questo spazio per inserire avvertenze, rettifiche o qualsiasi comunicazione extra necessaria oltre ai dati dei segna ore.
+           </p>
+           <div className="relative">
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Scrivi qui le tue note..."
+                readOnly={isConfermato}
+                className="w-full min-h-[100px] bg-white border border-amber-200 rounded-xl p-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all placeholder:text-slate-300"
+              />
+              {!isConfermato && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={handleSaveNote}
+                    disabled={savingNote}
+                    className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-700 transition-all shadow-md shadow-amber-600/10 disabled:opacity-50"
+                  >
+                    {savingNote ? 'Salvataggio...' : 'Salva Note'}
+                  </button>
+                </div>
+              )}
+           </div>
+        </div>
+      )}
+
       {isConfermato && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-3 text-blue-800 shadow-sm">
           <Info className="h-5 w-5 flex-shrink-0" />
           <p className="text-sm font-medium">
             Questo foglio è in modalità <strong>sola lettura</strong> perché è già stato inviato o chiuso.
+          </p>
+        </div>
+      )}
+
+      {isAdmin && (status === 'confermato' || status === 'chiuso') && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 text-amber-800 shadow-sm">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <p className="text-sm font-black">
+            MODALITÀ AMMINISTRATORE: Stai modificando un segnaore già confermato. Le modifiche verranno salvate direttamente.
           </p>
         </div>
       )}
@@ -2426,6 +2822,7 @@ export default function FoglioPresenze({
             isEdile={isEdile}
             anno={anno}
             mese={mese}
+            isAdmin={isAdmin}
           />
         ))}
       </div>
@@ -2446,6 +2843,7 @@ export default function FoglioPresenze({
             isEdile={isEdile}
             anno={anno}
             mese={mese}
+            isAdmin={isAdmin}
           />
         ))}
       </div>
@@ -2457,7 +2855,7 @@ export default function FoglioPresenze({
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
-                <h2 className="text-base font-bold text-slate-900">🏗️ Dashboard CIG</h2>
+                <h2 className="text-base font-bold text-slate-900">Dashboard CIG</h2>
                 <p className="text-xs text-slate-500">{MESI[mese]} {anno} — {azienda}</p>
               </div>
               <button onClick={() => setShowCigDash(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-700">
@@ -2536,6 +2934,17 @@ export default function FoglioPresenze({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal di Riepilogo GIS */}
+      {activeCell?.startsWith('gis-') && initialDipendenti.find(d => d.id === activeCell.replace('gis-', '')) && (
+        <GisSummaryModal
+          dip={initialDipendenti.find(d => d.id === activeCell.replace('gis-', ''))!}
+          anno={anno}
+          mese={mese}
+          isEdile={isEdile}
+          onClose={() => setActiveCell(null)}
+        />
       )}
     </div>
   )

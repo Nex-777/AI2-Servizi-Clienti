@@ -33,3 +33,14 @@ export async function getCigFasi(foglioId: string): Promise<{ cantiere_cod: stri
   if (error) return []
   return data || []
 }
+
+export async function saveFoglioNote(foglioId: string, note: string) {
+  if (!foglioId) throw new Error('ID foglio mancante')
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('fogli_presenza')
+    .update({ note: note.trim() })
+    .eq('id', foglioId)
+  if (error) throw new Error(`Errore salvataggio note: ${error.message}`)
+  revalidatePath('/')
+}

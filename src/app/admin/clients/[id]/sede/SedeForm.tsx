@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Save, CheckCircle2, Loader2 } from 'lucide-react'
 import { updateClientProfile } from '../../actions'
+import { AddressPicker } from '@/components/common/AddressPicker'
 
 interface SedeFormProps {
   id: string
@@ -12,14 +13,34 @@ interface SedeFormProps {
 export default function SedeForm({ id, client }: SedeFormProps) {
   const [isPending, startTransition] = useTransition()
   const [showSuccess, setShowSuccess] = useState(false)
+  const [addressData, setAddressData] = useState({
+    via: client.indirizzo || '',
+    comune: client.comune || '',
+    provincia: client.provincia || '',
+    cap: client.cap || '',
+    civico: client.civico || '',
+    is_verified: client.is_verified || false,
+    lat: client.lat || null,
+    lon: client.lon || null
+  })
 
-  async function handleSubmit(formData: FormData) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
     setShowSuccess(false)
+    const formData = new FormData(e.currentTarget)
+    
+    // Debug log to console (browser)
+    console.log('Submitting SedeForm:', {
+      indirizzo: formData.get('indirizzo'),
+      lat: formData.get('lat'),
+      lon: formData.get('lon'),
+      is_verified: formData.get('is_verified')
+    })
+
     startTransition(async () => {
       try {
         await updateClientProfile(id, formData)
         setShowSuccess(true)
-        // Hide success message after 3 seconds
         setTimeout(() => setShowSuccess(false), 3000)
       } catch (error) {
         alert('Errore durante il salvataggio: ' + (error as Error).message)
@@ -28,7 +49,7 @@ export default function SedeForm({ id, client }: SedeFormProps) {
   }
 
   return (
-    <form action={handleSubmit} className="space-y-5">
+    <form onSubmit={onSubmit} className="space-y-6">
       <div>
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">N° Ditta (CSV Auto-detect)</label>
           <input 
@@ -49,39 +70,22 @@ export default function SedeForm({ id, client }: SedeFormProps) {
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-slate-50/30" 
           />
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Provincia</label>
-          <input 
-            name="provincia" 
-            type="text" 
-            defaultValue={client.provincia || ''}
-            required
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Comune</label>
-          <input 
-            name="comune" 
-            type="text" 
-            defaultValue={client.comune || ''}
-            required
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-          />
-        </div>
-      </div>
+      <AddressPicker 
+        type="sede"
+        label="Indirizzo Sede Principale"
+        value={addressData}
+        onChange={(fields) => setAddressData(prev => ({ ...prev, ...fields }))}
+      />
 
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Indirizzo</label>
-        <textarea 
-          name="indirizzo" 
-          defaultValue={client.indirizzo || ''}
-          required
-          rows={2}
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-        />
-      </div>
+      {/* Hidden fields for lat/lon/verified since we use standard form action */}
+      <input type="hidden" name="indirizzo" value={addressData.via} />
+      <input type="hidden" name="civico" value={addressData.civico} />
+      <input type="hidden" name="comune" value={addressData.comune} />
+      <input type="hidden" name="provincia" value={addressData.provincia} />
+      <input type="hidden" name="cap" value={addressData.cap} />
+      <input type="hidden" name="lat" value={addressData.lat ?? ''} />
+      <input type="hidden" name="lon" value={addressData.lon ?? ''} />
+      <input type="hidden" name="is_verified" value={addressData.is_verified ? 'true' : 'false'} />
 
       <div className="pt-4 border-t border-slate-100">
         <h3 className="text-sm font-bold text-slate-800 mb-4">Impostazioni Avanzate Cliente</h3>

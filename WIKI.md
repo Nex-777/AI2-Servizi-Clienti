@@ -1,10 +1,15 @@
 # AI2 - Servizi Clienti | Project Wiki
 
 ## Stato del Progetto
-Versione Attuale: **v1.0.42**
-Ultimo Aggiornamento: 10/05/2026
+Versione Attuale: **v1.0.45**
+Ultimo Aggiornamento: 13/05/2026
 
 ## Progressi Raggiunti
+- [x] **Redesign Riepilogo GIS**: Nuova interfaccia premium per il modal di controllo; inclusa testata scura, griglia statistiche e tabella dettagliata dei contatori software.
+- [x] **Logica GIS Avanzata**: Implementato calcolo automatico "Ore Non Giustificate" e integrata la gestione di tutti i codici assenza (Maternità, Allattamento, Donazione, CIG, ecc.) nei totali di controllo.
+- [x] **Note per lo Studio**: Aggiunta sezione "Comunicazioni allo Studio" collassabile con salvataggio persistente per note extra e rettifiche.
+- [x] **Distanza Chilometrica**: Visualizzazione automatica dei chilometri `(X.X KM)` accanto alla Ragione Sociale/Indirizzo del cantiere nel selettore.
+- [x] **Ottimizzazione UI**: Pulizia righe ridondanti nel Dashboard CIG e aggiunta icone di collegamento rapido (`ExternalLink`) per i riepiloghi mensili.
 - [x] **Supporto Festività**: Implementata gestione automatica festività italiane (inclusa Pasqua/Pasquetta) con evidenziazione cromatica differenziata nel calendario.
 - [x] **Sicurezza Cancellazione**: Introdotta doppia conferma inline per la rimozione dei giustificativi per prevenire cancellazioni accidentali.
 - [x] **Evoluzione Admin**: Nuova interfaccia di gestione Clienti e Cantieri con supporto al caricamento massivo di file presenze via CSV.

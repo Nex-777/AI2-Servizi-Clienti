@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRight, Users, Calendar, CheckCircle, Clock, AlertCircle } from 'lucide-react'
+import { ArrowRight, Users, Calendar, CheckCircle, Clock, AlertCircle, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import { reopenFoglio } from '@/app/actions/confirm'
 
 const MESI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
 
@@ -38,7 +39,8 @@ export default function AdminFogliList({ fogli: initialFogli }: { fogli: Foglio[
   const filteredFogli = fogli.filter(f => {
     const matchMese = filterMese === '' || String(f.mese) === filterMese
     const matchAnno = filterAnno === '' || String(f.anno) === filterAnno
-    return matchMese && matchAnno
+    const isNotBozza = f.status !== 'bozza'
+    return matchMese && matchAnno && isNotBozza
   })
 
   const getDipendentiCount = (dipendenti: any) => {
@@ -59,7 +61,7 @@ export default function AdminFogliList({ fogli: initialFogli }: { fogli: Foglio[
         console.error('Error updating status:', error)
         alert('Errore durante l\'aggiornamento dello stato.')
       } else {
-        setFogli(fogli.map(f => f.id === id ? { ...f, admin_status: newStatus } : f))
+        setFogli(prev => prev.map(f => f.id === id ? { ...f, admin_status: newStatus } : f))
         router.refresh()
       }
     } catch (e) {
@@ -241,6 +243,33 @@ export default function AdminFogliList({ fogli: initialFogli }: { fogli: Foglio[
                 >
                   <ArrowRight className="h-4 w-4" />
                 </Link>
+
+                {(f.status === 'confermato' || f.status === 'chiuso') && (
+                  <button
+                    onClick={async () => {
+                      if (confirm("Vuoi davvero riaprire questo segnaore? Tornerà in stato 'Bozza' e il cliente potrà modificarlo.")) {
+                        setIsUpdating(f.id)
+                        try {
+                          console.log('Calling reopenFoglio for:', f.id)
+                          const res = await reopenFoglio(f.id)
+                          if (res?.success) {
+                            console.log('Reopen success, updating local state')
+                            setFogli(prev => prev.filter(item => item.id !== f.id))
+                            router.refresh()
+                          }
+                        } catch (e: any) {
+                          alert(e.message)
+                        } finally {
+                          setIsUpdating(null)
+                        }
+                      }
+                    }}
+                    className="flex items-center justify-center h-9 w-9 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                    title="Riapri Segnaore (Torna in Bozza)"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           )

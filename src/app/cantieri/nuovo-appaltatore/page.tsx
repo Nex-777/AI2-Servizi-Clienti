@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -43,6 +43,9 @@ const ATTIVITA_OPTIONS = [
 
 export default function NuovoCantiereAppaltatore() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const rawClientId = searchParams.get('clientId')
+  const clientId = (rawClientId && rawClientId !== 'undefined') ? rawClientId : undefined
   const [step, setStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,7 +134,7 @@ export default function NuovoCantiereAppaltatore() {
     setIsSubmitting(true)
     setError(null)
     try {
-      const res = await submitDNL(formData)
+      const res = await submitDNL({ ...formData, clientId })
       if (res.success) {
         router.push('/')
         router.refresh()
@@ -190,7 +193,7 @@ export default function NuovoCantiereAppaltatore() {
         )}
 
         {/* Form Content */}
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-visible">
           <div className="p-8">
             {step === 0 && (
               <div className="space-y-8 animate-in fade-in slide-in-from-right-4">
@@ -226,7 +229,7 @@ export default function NuovoCantiereAppaltatore() {
                           <input 
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all"
                             value={formData.committente.cognome}
-                            onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, cognome: e.target.value } })}
+                            onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, cognome: e.target.value } }))}
                           />
                         </div>
                         <div className="space-y-1">
@@ -234,7 +237,7 @@ export default function NuovoCantiereAppaltatore() {
                           <input 
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all"
                             value={formData.committente.nome}
-                            onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, nome: e.target.value } })}
+                            onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, nome: e.target.value } }))}
                           />
                         </div>
                       </>
@@ -244,7 +247,7 @@ export default function NuovoCantiereAppaltatore() {
                         <input 
                           className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all"
                           value={formData.committente.ragione_sociale}
-                          onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, ragione_sociale: e.target.value } })}
+                          onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, ragione_sociale: e.target.value } }))}
                         />
                       </div>
                     )}
@@ -253,7 +256,7 @@ export default function NuovoCantiereAppaltatore() {
                       <input 
                         className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all font-mono"
                         value={formData.committente.cf}
-                        onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, cf: e.target.value.toUpperCase() } })}
+                        onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, cf: e.target.value.toUpperCase() } }))}
                       />
                     </div>
                     {formData.committente.tipo !== 'privato' && (
@@ -262,7 +265,7 @@ export default function NuovoCantiereAppaltatore() {
                         <input 
                           className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all font-mono"
                           value={formData.committente.piva}
-                          onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, piva: e.target.value } })}
+                          onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, piva: e.target.value } }))}
                         />
                       </div>
                     )}
@@ -273,25 +276,29 @@ export default function NuovoCantiereAppaltatore() {
                           className="w-full px-4 py-3 rounded-xl border border-[#D32F2F]/30 bg-red-50/30 focus:ring-2 focus:ring-[#D32F2F]/20 outline-none transition-all font-mono font-bold"
                           placeholder="Obbligatorio per enti pubblici"
                           value={formData.committente.cup}
-                          onChange={(e) => setFormData({ ...formData, committente: { ...formData.committente, cup: e.target.value.toUpperCase() } })}
+                          onChange={(e) => setFormData(prev => ({ ...prev, committente: { ...prev.committente, cup: e.target.value.toUpperCase() } }))}
                         />
                       </div>
                     )}
                   </div>
 
                   <AddressPicker 
+                    type="committente"
+                    isHookForm={false}
                     label="Indirizzo Committente"
                     value={{
                       via: formData.committente.via,
                       civico: formData.committente.civico,
                       comune: formData.committente.comune,
                       provincia: formData.committente.provincia,
-                      cap: formData.committente.cap
+                      cap: formData.committente.cap,
+                      is_verified: formData.committente.is_verified
                     }}
-                    onChange={(fields) => setFormData({ 
-                      ...formData, 
-                      committente: { ...formData.committente, ...fields } 
-                    })}
+                    showCalculationWarning={false}
+                    onChange={(fields) => setFormData(prev => ({ 
+                      ...prev, 
+                      committente: { ...prev.committente, ...fields } 
+                    }))}
                   />
                 </div>
               </div>
@@ -302,23 +309,24 @@ export default function NuovoCantiereAppaltatore() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
                       <AddressPicker 
+                        type="cantiere"
                         label="Ubicazione Cantiere"
                         value={{
                           via: formData.cantiere.via,
                           civico: formData.cantiere.civico,
                           comune: formData.cantiere.comune,
-                          provincia: formData.cantiere.prov, // Mappiamo prov -> provincia
-                          cap: formData.cantiere.cap
+                          provincia: formData.cantiere.prov,
+                          cap: formData.cantiere.cap,
+                          is_verified: formData.cantiere.is_verified
                         }}
                         onChange={(fields) => {
-                          const updatedFields = { ...fields };
-                          if (fields.provincia) {
-                            (updatedFields as any).prov = fields.provincia;
-                            delete updatedFields.provincia;
-                          }
-                          setFormData({ 
-                            ...formData, 
-                            cantiere: { ...formData.cantiere, ...updatedFields } 
+                          setFormData(prev => {
+                            const updatedCantiere = { ...prev.cantiere, ...fields };
+                            if (fields.provincia) {
+                              (updatedCantiere as any).prov = fields.provincia;
+                              delete (updatedCantiere as any).provincia;
+                            }
+                            return { ...prev, cantiere: updatedCantiere };
                           });
                         }}
                       />
@@ -538,6 +546,7 @@ export default function NuovoCantiereAppaltatore() {
                             )}
 
                              <AddressPicker 
+                                type="committente"
                                 label="Indirizzo Subappalto"
                                 value={{
                                   via: sub.via,

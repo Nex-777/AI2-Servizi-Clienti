@@ -14,10 +14,10 @@ export async function confirmAndSend(foglioId: string) {
   console.log(`[confirmAndSend] Avvio per foglioId: ${foglioId}`)
   const admin = createAdminClient()
 
-  // 1. Fetch foglio
+  // 1. Fetch foglio + client info
   const { data: foglio, error: foglioError } = await admin
     .from('fogli_presenza')
-    .select('*')
+    .select('*, profiles(ragione_sociale)')
     .eq('id', foglioId)
     .single()
 
@@ -91,18 +91,19 @@ export async function confirmAndSend(foglioId: string) {
     dipendenti: dipendentiConDati,
   })
 
-  const nomeMese = MESI[foglio.mese] || `Mese${foglio.mese}`
-  const filename = `presenze_${foglio.azienda.replace(/\s+/g, '_')}_${nomeMese}_${foglio.anno}.csv`
-
   // 5. Send email via Resend
+  const nomeMese = MESI[foglio.mese] || `Mese${foglio.mese}`
+  const clientName = (foglio as any).profiles?.ragione_sociale || foglio.azienda
+  const filename = `presenze_${clientName.replace(/\s+/g, '_')}_${nomeMese}_${foglio.anno}.csv`
+
   const { error: emailError } = await resend.emails.send({
     from: 'AI2 Servizi Clienti <notifiche@agenziaitalia2.it>',
     to: [process.env.ADMIN_EMAIL || 'paoletti@agenziaitalia2.it'],
-    subject: `Foglio Presenze - ${foglio.azienda} - ${nomeMese} ${foglio.anno}`,
+    subject: `Foglio Presenze - ${nomeMese} ${foglio.anno} - ${clientName}`,
     html: `
       <p>Il cliente ha confermato il foglio presenze.</p>
       <ul>
-        <li><strong>Azienda:</strong> ${foglio.azienda}</li>
+        <li><strong>Azienda:</strong> ${clientName}</li>
         <li><strong>Periodo:</strong> ${nomeMese} ${foglio.anno}</li>
         <li><strong>Dipendenti:</strong> ${dipendentiConDati.length}</li>
       </ul>
@@ -245,6 +246,18 @@ export async function saveCausale(formData: FormData) {
   revalidatePath('/')
 }
 
+export async function clearNightHoursRow(dipendente_id: string) {
+  console.log(`Clearing all night hours for dipendente ${dipendente_id}`)
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('giornate')
+    .update({ ore_notturne: null })
+    .eq('dipendente_id', dipendente_id)
+
+  if (error) throw new Error(`Errore pulizia ore notturne: ${error.message}`)
+  revalidatePath('/')
+}
+
 export async function clearCausaleRow(dipendente_id: string, numero: number) {
   console.log(`Clearing row ${numero} for dipendente ${dipendente_id}`)
   const admin = createAdminClient()
@@ -321,4 +334,28 @@ export async function saveGiornata(formData: FormData) {
 
   if (error) throw new Error(`Errore salvataggio giornata: ${error.message}`)
   revalidatePath('/')
+}
+
+export async function reopenFoglio(foglioId: string) {
+  console.log(`[reopenFoglio] Attempting to reopen foglio: ${foglioId}`)
+  const admin = createAdminClient()
+  
+  // Resettiamo sia lo stato utente che lo stato admin per ricominciare da zero
+  const { error } = await admin
+    .from('fogli_presenza')
+    .update({ 
+      status: 'bozza', 
+      confirmed_at: null,
+      admin_status: 'da_fare' 
+    })
+    .eq('id', foglioId)
+
+  if (error) {
+    console.error(`[reopenFoglio] Error:`, error)
+    throw new Error(`Errore riapertura foglio: ${error.message}`)
+  }
+  
+  console.log(`[reopenFoglio] Success for foglio: ${foglioId}`)
+  revalidatePath('/')
+  return { success: true }
 }

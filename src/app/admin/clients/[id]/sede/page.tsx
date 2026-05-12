@@ -5,6 +5,7 @@ import { ArrowLeft, Building2, Save, MapPin, Info, Plus, Trash2 } from 'lucide-r
 import Link from 'next/link'
 import { updateClientProfile, updateClientSede, addAdditionalSede, deleteAdditionalSede } from '../../actions'
 import SedeForm from './SedeForm'
+import AddSedeForm from './AddSedeForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,7 @@ export default async function AdminClientSedePage({
                 Anagrafica e Sede Principale
               </h2>
 
-              <SedeForm id={id} client={client} />
+              <SedeForm key={client.updated_at || id} id={id} client={client} />
             </div>
 
             <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex gap-4 items-start">
@@ -103,38 +104,7 @@ export default async function AdminClientSedePage({
                 Aggiungi Altra Sede
               </h2>
 
-              <form action={async (formData) => {
-                'use server'
-                await addAdditionalSede(id, formData)
-              }} className="space-y-5">
-                <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">N° Sede</label>
-                    <input 
-                      name="numero" 
-                      type="text" 
-                      required
-                      placeholder="Es. 2"
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Provincia</label>
-                    <input name="provincia" type="text" required className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Comune</label>
-                    <input name="comune" type="text" required className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Indirizzo</label>
-                  <input name="indirizzo" type="text" required className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-                </div>
-                <button type="submit" className="w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-all shadow-md">
-                   Aggiungi Sede Operativa
-                </button>
-              </form>
+              <AddSedeForm clientId={id} />
             </div>
 
             {/* ADDITIONAL SEDI LIST */}

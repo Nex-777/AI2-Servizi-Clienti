@@ -140,6 +140,12 @@ export default function ClientCantieriPage({
                       <MapPin className="h-4 w-4" />
                       {c.comune} ({c.prov})
                     </div>
+                    {c.distanza_km && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                        <Calculator className="h-3.5 w-3.5" />
+                        {c.distanza_km.toFixed(1)} km
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-sm text-slate-500">
                       <Users className="h-4 w-4" />
                       {c.committente}
@@ -201,7 +207,8 @@ export default function ClientCantieriPage({
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="md:col-span-4">
                     <AddressPicker 
-                      label=""
+                      type="cantiere"
+                      label="Ubicazione Cantiere"
                       value={cantiereAddr}
                       onChange={(f) => setCantiereAddr(p => ({ ...p, ...f }))}
                     />
@@ -262,6 +269,7 @@ export default function ClientCantieriPage({
                   </div>
                   <div className="md:col-span-3">
                     <AddressPicker 
+                      type="sede"
                       label="Sede Committente"
                       value={committenteAddr}
                       onChange={(f) => setCommittenteAddr(p => ({ ...p, ...f }))}

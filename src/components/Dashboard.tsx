@@ -22,7 +22,8 @@ export default function Dashboard({
   onSelectFoglio,
   profile,
   cantieri,
-  additionalSedi
+  additionalSedi,
+  isAdmin = false
 }: { 
   userEmail: string
   fogli: FoglioSummary[]
@@ -30,6 +31,7 @@ export default function Dashboard({
   profile?: any
   cantieri?: any[]
   additionalSedi?: any[]
+  isAdmin?: boolean
 }) {
   const [activeModal, setActiveModal] = useState<'sede' | 'cantiere' | null>(null)
   const [viewingCantiere, setViewingCantiere] = useState<any | null>(null)
@@ -343,21 +345,21 @@ export default function Dashboard({
                     {!viewingCantiere && (
                       <div className="flex gap-2">
                         <Link 
-                          href="/cantieri/nuovo-appaltatore"
+                          href={isAdmin ? `/cantieri/nuovo-appaltatore?clientId=${profile?.id}` : "/cantieri/nuovo-appaltatore"}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-[#D32F2F] text-white rounded-xl text-xs font-bold hover:bg-[#b02727] transition-all shadow-lg shadow-red-900/10 group"
                         >
                           <Construction className="h-3.5 w-3.5" />
                           NUOVO CANTIERE (APPALTATORE)
                           <ArrowUpRight className="h-3 w-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                         </Link>
-                        <button 
-                          disabled
-                          title="Prossimamente"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-bold cursor-not-allowed border border-slate-200"
+                        <Link 
+                          href={isAdmin ? `/cantieri/nuovo-subappalto?clientId=${profile?.id}` : "/cantieri/nuovo-subappalto"}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-white text-emerald-600 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-50 transition-all shadow-sm group"
                         >
                           <Building2 className="h-3.5 w-3.5" />
                           COME SUBAPPALTATORE
-                        </button>
+                          <ArrowUpRight className="h-3 w-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -415,6 +417,14 @@ export default function Dashboard({
                                  <div>
                                    <p className="text-sm font-bold text-slate-900">{viewingCantiere.cantiere} {viewingCantiere.civico}</p>
                                    <p className="text-xs text-slate-600">{viewingCantiere.comune} ({viewingCantiere.prov}) — {viewingCantiere.cap}</p>
+                                   {viewingCantiere.distanza_km && (
+                                     <div className="flex items-center gap-2 mt-2 py-1.5 px-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                       <Calculator className="h-3.5 w-3.5 text-indigo-600" />
+                                       <span className="text-[11px] font-bold text-indigo-700">
+                                         Distanza Sede: {viewingCantiere.distanza_km.toFixed(1)} km
+                                       </span>
+                                     </div>
+                                   )}
                                  </div>
                                  <div className="flex gap-2">
                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-black rounded uppercase">Dal: {viewingCantiere.da}</span>
@@ -529,6 +539,12 @@ export default function Dashboard({
                               <td className="px-4 py-5">
                                 <div className="text-slate-700 font-semibold text-xs uppercase">{c.comune}</div>
                                 <div className="text-[10px] text-slate-400 font-mono mt-0.5">{c.cap} ({c.prov})</div>
+                                {c.distanza_km && (
+                                  <div className="mt-2 flex items-center gap-1.5 text-[#D32F2F] font-bold text-[10px]">
+                                    <Calculator className="h-3 w-3" />
+                                    {c.distanza_km.toFixed(1)} km
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-5">
                                 <div className="text-slate-700 font-bold text-[11px] uppercase truncate max-w-[150px]">{c.committente || '—'}</div>

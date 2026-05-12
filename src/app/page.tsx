@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
+export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { UploadCloud, Users, Settings, LogOut, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
@@ -36,7 +37,7 @@ export default async function DashboardPage({
   const admin = createAdminClient()
   const { data: targetProfile } = await admin
     .from('profiles')
-    .select('role, provincia, comune, indirizzo, numero_sede, email, is_edile, ragione_sociale')
+    .select('id, role, provincia, comune, indirizzo, numero_sede, email, is_edile, ragione_sociale')
     .eq('id', effectiveUserId)
     .single()
 
@@ -221,6 +222,7 @@ export default async function DashboardPage({
             profile={targetProfile}
             cantieri={cantieri || []}
             additionalSedi={additionalSedi || []}
+            isAdmin={isAdmin}
           />
         </main>
       </div>

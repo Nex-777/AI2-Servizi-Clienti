@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { resend } from '@/utils/resend'
 import { revalidatePath } from 'next/cache'
+import { getCoordinates, getRoadDistance } from '@/utils/geo-services'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,11 @@ export interface CantiereData {
   n_imprese: string
   n_operai: string
   nota: string
+  cod_univoco?: string
+  lat: number | null
+  lon: number | null
+  is_verified: boolean
+  manual_km?: number | null
 }
 
 export interface SubappaltatoreData {
@@ -69,9 +75,15 @@ export interface SubappaltatoreData {
 }
 
 export interface SubmitDNLPayload {
+  clientId?: string
   committente: CommittenteData
   cantiere: CantiereData
   subappaltatori: SubappaltatoreData[]
+  appalto_subappalto?: 'Appalto' | 'Subappalto'
+  appaltatore?: {
+    ragione_sociale: string
+    cf_piva: string
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,7 +107,9 @@ function buildEmailText(
   clientName: string,
   committente: CommittenteData,
   cantiere: CantiereData,
-  subappaltatori: SubappaltatoreData[]
+  subappaltatori: SubappaltatoreData[],
+  appalto_subappalto: string = 'Appalto',
+  appaltatore?: { ragione_sociale: string; cf_piva: string }
 ): string {
   const now = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })
 
@@ -132,7 +146,17 @@ CAP:                  ${fmt(committente.cap)}`
 CUP:                  ${fmt(committente.cup)}`
   }
 
-  let cantiereBlock = `--- CANTIERE ---
+  let appaltatoreBlock = ''
+  if (appalto_subappalto === 'Subappalto' && appaltatore) {
+    appaltatoreBlock = `
+--- APPALTATORE (DITTA AFFIDATARIA) ---
+Ragione Sociale:      ${fmt(appaltatore.ragione_sociale)}
+Codice Fiscale/PI:    ${fmt(appaltatore.cf_piva)}
+`
+  }
+
+  let cantiereBlock = `--- CANTIERE (${appalto_subappalto.toUpperCase()}) ---
+Codice CNCE Unico:    ${fmt(cantiere.cod_univoco)}
 Via:                  ${fmt(cantiere.via)}
 Civico:               ${fmt(cantiere.civico)}
 Comune:               ${fmt(cantiere.comune)}
@@ -191,6 +215,7 @@ Lavoratore Autonomo:  ${fmtBool(s.lavoratore_autonomo)}`
 Cliente:  ${clientName}
 Inviata:  ${now}
 
+${appaltatoreBlock}
 ${committenteBlock}
 
 ${cantiereBlock}
@@ -211,44 +236,116 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) return { success: false, error: 'Sessione scaduta. Rieffettuare il login.' }
 
-    // 2. Get profile to get client name for the email
+    // 1b. Determine target client_id
+    let targetClientId = user.id
+    
+    // Sanitize clientId: handle case where it might be string "undefined" or "null"
+    const providedClientId = (payload.clientId === 'undefined' || payload.clientId === 'null') 
+      ? undefined 
+      : payload.clientId;
+
+    if (providedClientId && providedClientId !== user.id) {
+      // Check if user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      if (profile?.role === 'super_admin' || profile?.role === 'admin') {
+        targetClientId = providedClientId
+      } else {
+        return { success: false, error: 'Permesso negato: non sei un amministratore.' }
+      }
+    }
+
+    // 2. Get profile for email and geo-coordinates
     const { data: profile } = await admin
       .from('profiles')
-      .select('email')
-      .eq('id', user.id)
+      .select('email, indirizzo, comune, provincia, lat, lon')
+      .eq('id', targetClientId)
       .single()
 
     const clientName = profile?.email || user.email || 'Cliente sconosciuto'
 
-    const { committente, cantiere, subappaltatori } = payload
+    // 2.1. Handle HQ Geocoding if missing
+    let hqLat = profile?.lat
+    let hqLon = profile?.lon
+
+    if (profile && (!hqLat || !hqLon) && profile.indirizzo && profile.comune) {
+      const hqCoords = await getCoordinates(profile.indirizzo, profile.comune, profile.provincia || '')
+      if (hqCoords) {
+        hqLat = hqCoords.lat
+        hqLon = hqCoords.lon
+        // Update profile in background to cache coords
+        await admin.from('profiles').update({ lat: hqLat, lon: hqLon, is_verified: true }).eq('id', targetClientId)
+      }
+    }
+
+    const { committente, cantiere, subappaltatori, appalto_subappalto = 'Appalto', appaltatore } = payload
+
+    // 2.2. Handle Distance and Geocoding
+    let cantiereLat: number | null = cantiere.lat
+    let cantiereLon: number | null = cantiere.lon
+    let distanzaKm: number | null = null
+
+    // 3. Priority to manual KM if provided
+    if (cantiere.manual_km && cantiere.manual_km > 0) {
+      distanzaKm = cantiere.manual_km
+    }
+
+    // 4. Geocode if verified and coordinates are missing
+    if (cantiere.is_verified && (!cantiereLat || !cantiereLon)) {
+      const cantiereCoords = await getCoordinates(cantiere.via, cantiere.comune, cantiere.prov)
+      if (cantiereCoords) {
+        cantiereLat = cantiereCoords.lat
+        cantiereLon = cantiereCoords.lon
+      }
+    }
+
+    // 5. Distance calculation (Manual KM > Auto GPS)
+    if (!distanzaKm && cantiereLat && cantiereLon && hqLat && hqLon) {
+      distanzaKm = await getRoadDistance(hqLat, hqLon, cantiereLat, cantiereLon)
+    }
 
     // 3. Build the committente label for the legacy 'committente' field
     const committenteLabel = committente.tipo === 'privato'
       ? `${committente.cognome} ${committente.nome}`.trim() || 'Privato'
       : committente.ragione_sociale || 'Ente/Azienda'
 
-    // 4. Generate Cantiere Code
+    // 4. Build the Cantiere Name (Legacy 'cantiere' field)
+    // format: [CODICE] VIA CIVICO COMUNE PROV COMMITTENTE/APPALTATORE
+    // Wait, the 'cantiere' field in DB is traditionally just the address, 
+    // but the user wants the display in the dropdown to be composed.
+    // To ensure compatibility, we'll keep 'cantiere' as the address (via),
+    // and let the frontend compose the label as we did in FoglioPresenze.tsx.
+    
+    // 5. Generate Cantiere Code
     const { generateAndAssignCantiereCode } = await import('@/utils/codeGenerator')
-    const autoCode = await generateAndAssignCantiereCode(user.id)
+    const autoCode = await generateAndAssignCantiereCode(targetClientId)
 
-    // 5. Insert cantiere
+    // 6. Insert cantiere
     const { data: newCantiere, error: insertError } = await admin
       .from('cantieri')
       .insert({
-        client_id: user.id,
+        client_id: targetClientId,
         cod: autoCode,
         // existing fields (legacy compat)
-        cantiere: cantiere.via,
+        cantiere: cantiere.via, // We keep the address here
         civico: cantiere.civico,
         comune: cantiere.comune,
         cap: cantiere.cap,
         prov: cantiere.prov,
-        committente: committenteLabel,
+        cod_univoco: cantiere.cod_univoco || null,
+        committente: appalto_subappalto === 'Subappalto' ? (appaltatore?.ragione_sociale || 'Appaltatore') : committenteLabel,
         da: cantiere.data_inizio,
         a: cantiere.data_fine,
         cup: committente.tipo === 'ente_pubblico' ? committente.cup : null,
         sisma: cantiere.sisma ? 'SI' : 'NO',
-        appalto_subappalto: 'Appalto',
+        appalto_subappalto: appalto_subappalto,
+        // appaltatore fields (new)
+        appaltatore_ragione_sociale: appaltatore?.ragione_sociale || null,
+        appaltatore_cf: appaltatore?.cf_piva || null,
         // new DNL fields
         tipo_committente: committente.tipo,
         committente_cf: committente.cf,
@@ -271,6 +368,11 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
         n_operai: cantiere.n_operai ? parseInt(cantiere.n_operai) : null,
         nota: cantiere.nota || null,
         dnl_status: 'confermato',
+        // geo fields
+        lat: cantiereLat,
+        lon: cantiereLon,
+        distanza_km: distanzaKm,
+        is_verified: cantiere.is_verified || false,
       })
       .select('id')
       .single()
@@ -286,7 +388,7 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
     if (subappaltatori.length > 0) {
       const subRows = subappaltatori.map((s) => ({
         cantiere_id: cantiereId,
-        client_id: user.id,
+        client_id: targetClientId,
         ragione_sociale: s.ragione_sociale,
         codice_fiscale: s.codice_fiscale,
         partita_iva: s.partita_iva || null,
@@ -319,7 +421,7 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
     }
 
     // 6. Build and send email
-    const emailText = buildEmailText(clientName, committente, cantiere, subappaltatori)
+    const emailText = buildEmailText(clientName, committente, cantiere, subappaltatori, appalto_subappalto, appaltatore)
 
     await resend.emails.send({
       from: 'AI2 Servizi Clienti <notifiche@agenziaitalia2.it>',

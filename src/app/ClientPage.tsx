@@ -18,7 +18,8 @@ export default function ClientPage({
   selectedFoglioData,
   profile,
   cantieri,
-  additionalSedi
+  additionalSedi,
+  isAdmin = false
 }: { 
   userEmail: string
   fogli: FoglioSummary[]
@@ -26,6 +27,7 @@ export default function ClientPage({
   profile: any
   cantieri: any[]
   additionalSedi: any[]
+  isAdmin?: boolean
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -58,6 +60,8 @@ export default function ClientPage({
         additionalSedi={additionalSedi}
         profile={profile}
         cigFasi={selectedFoglioData.cigFasi || []}
+        note={selectedFoglioData.note}
+        isAdmin={isAdmin}
         onBack={handleBack}
       />
     )
@@ -72,6 +76,7 @@ export default function ClientPage({
       profile={profile}
       cantieri={cantieri}
       additionalSedi={additionalSedi}
+      isAdmin={isAdmin}
     />
   )
 }
