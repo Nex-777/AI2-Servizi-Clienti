@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { 
   ChevronRight, 
@@ -41,7 +41,7 @@ const ATTIVITA_OPTIONS = [
   "17 OG 12 - OG 13 - Bonifica e protezione ambientale - 16,47%"
 ]
 
-export default function NuovoCantiereAppaltatore() {
+function NuovoCantiereAppaltatoreContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const rawClientId = searchParams.get('clientId')
@@ -64,7 +64,8 @@ export default function NuovoCantiereAppaltatore() {
       cap: '',
       comune: '',
       provincia: '',
-      cup: ''
+      cup: '',
+      is_verified: false
     },
     cantiere: {
       via: '',
@@ -83,7 +84,10 @@ export default function NuovoCantiereAppaltatore() {
       n_autonomi: '0',
       n_imprese: '0',
       n_operai: '0',
-      nota: ''
+      nota: '',
+      lat: null,
+      lon: null,
+      is_verified: false
     },
     subappaltatori: []
   })
@@ -284,7 +288,6 @@ export default function NuovoCantiereAppaltatore() {
 
                   <AddressPicker 
                     type="committente"
-                    isHookForm={false}
                     label="Indirizzo Committente"
                     value={{
                       via: formData.committente.via,
@@ -729,5 +732,15 @@ export default function NuovoCantiereAppaltatore() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function NuovoCantiereAppaltatore() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
+      <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
+    </div>}>
+      <NuovoCantiereAppaltatoreContent />
+    </Suspense>
   )
 }

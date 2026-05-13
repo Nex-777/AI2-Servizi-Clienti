@@ -104,6 +104,9 @@ interface FoglioPresenzaProps {
   mese: number
   status: string
   dipendenti: Dipendente[]
+  cantieri: any[]
+  additionalSedi: any[]
+  profile: any
   note?: string | null
   cigFasi?: { cantiere_cod: string; fase_lavorativa: string }[]
   readOnly?: boolean
@@ -1214,21 +1217,7 @@ function CausaleCell({
 
 
 
-interface FoglioPresenzaProps {
-  foglioId: string
-  azienda: string
-  sede: string | null
-  anno: number
-  mese: number
-  status: string
-  dipendenti: Dipendente[]
-  cantieri: any[]
-  additionalSedi: any[]
-  profile: any
-  cigFasi: { cantiere_cod: string; fase_lavorativa: string }[]
-  readOnly?: boolean
-  onBack?: () => void
-}
+
 
 function DipendenteSectionDesktop({ 
   dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 

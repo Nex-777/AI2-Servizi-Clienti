@@ -25,6 +25,7 @@ export interface CommittenteData {
   provincia: string
   // solo ente_pubblico
   cup: string
+  is_verified?: boolean
 }
 
 export interface CantiereData {

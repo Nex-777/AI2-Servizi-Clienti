@@ -46,7 +46,7 @@ export default async function DashboardPage({
     // Fetch all submitted fogli (status != 'bozza')
     const { data: adminFogli } = await admin
       .from('fogli_presenza')
-      .select('id, client_id, azienda, anno, mese, status, admin_status, uploaded_at, profiles!fogli_presenza_client_id_fkey(email, ragione_sociale), dipendenti(count)')
+      .select('id, client_id, azienda, anno, mese, status, admin_status, uploaded_at, note, profiles!fogli_presenza_client_id_fkey(email, ragione_sociale), dipendenti(count)')
       .neq('status', 'bozza')
       .order('anno', { ascending: false })
       .order('mese', { ascending: false })
