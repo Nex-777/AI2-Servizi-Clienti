@@ -1,10 +1,17 @@
 # AI2 - Servizi Clienti | Project Wiki
 
 ## Stato del Progetto
-Versione Attuale: **v1.0.45**
-Ultimo Aggiornamento: 13/05/2026
+Versione Attuale: **v1.0.46**
+Ultimo Aggiornamento: 14/05/2026
 
 ## Progressi Raggiunti
+- [x] **Riepilogo Trasferte KM**: Integrato calcolo automatico dei giorni di trasferta suddivisi per fasce chilometriche (Sede, 10km, 20km, 30km, >30km).
+- [x] **Esportazione Excel**: Aggiunta funzionalità di download riepilogo in formato `.xlsx` per elaborazione esterna (GIS/Paghe).
+- [x] **Stampa PDF Professionale**: Implementato layout di stampa ottimizzato (A4 Landscape) che nasconde gli elementi di navigazione e formatta correttamente le tabelle per l'archiviazione cartacea.
+- [x] **Gestione Ticket INPS**: Aggiunta colonna `ticket_inps` per le fasi CIG, con supporto alla copia rapida del codice alfanumerico per l'amministratore.
+- [x] **Inizializzazione Automatica SEDE**: Migliorata l'esperienza utente compilando automaticamente la riga "Cantiere/Sede" con la sede principale o l'ultimo cantiere attivo all'apertura di un nuovo foglio vuoto.
+- [x] **Integrazione Resend**: Migliorato il sistema di notifiche DNL con invio via `noreply@ai2serviziclienti.it` e template HTML arricchito con dettagli cantiere e subappaltatori.
+- [x] **Hardening Dati Cantiere**: Rimossa dipendenza da servizi di geolocalizzazione esterni in favore di una gestione più snella basata su fasce chilometriche predefinite.
 - [x] **Redesign Riepilogo GIS**: Nuova interfaccia premium per il modal di controllo; inclusa testata scura, griglia statistiche e tabella dettagliata dei contatori software.
 - [x] **Logica GIS Avanzata**: Implementato calcolo automatico "Ore Non Giustificate" e integrata la gestione di tutti i codici assenza (Maternità, Allattamento, Donazione, CIG, ecc.) nei totali di controllo.
 - [x] **Note per lo Studio**: Aggiunta sezione "Comunicazioni allo Studio" collassabile con salvataggio persistente per note extra e rettifiche.
@@ -29,11 +36,8 @@ Ultimo Aggiornamento: 13/05/2026
 - [x] **Campi Note Giustificativi**: Implementata casella descrittiva per il giustificativo `GEN` (Generale). Aggiunto indicatore visivo (pallino ambra) nelle celle che contengono una nota, visibile anche al passaggio del mouse.
 
 ## Task Pendenti (Prossima Sessione)
-- [ ] **Verifica Dominio Resend**: 
-    - [ ] Aggiungere record DNS su `agenziaitalia2.it`.
-    - [ ] Abilitare invio a destinatari esterni (consulenti/ufficio paghe).
-    - [ ] Ripristinare `process.env.ADMIN_EMAIL` as destinatario dinamico.
 - [ ] **Miglioramento UI Periodo**: Valutare se aggiungere un'anteprima dei giorni che verranno compilati nel range selezionato.
+- [ ] **Statistiche Avanzate**: Analisi dei costi chilometrici per cantiere basati sulle fasce km.
 
 ---
 *Documento aggiornato da Antigravity.*

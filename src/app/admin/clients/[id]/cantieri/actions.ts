@@ -50,6 +50,8 @@ export async function addCantiere(clientId: string, formData: FormData) {
     n_operai: formData.get('n_operai') ? parseInt(formData.get('n_operai') as string) : 0,
     nota: formData.get('nota') as string,
     dnl_status: formData.get('dnl_status') as string,
+    is_archived: formData.get('is_archived') === 'true',
+    distanza_km: formData.get('distanza_km') as string || null
   }
 
   const { error } = await admin
@@ -107,6 +109,8 @@ export async function updateCantiere(clientId: string, cantiereId: string, formD
     n_operai: formData.get('n_operai') ? parseInt(formData.get('n_operai') as string) : 0,
     nota: formData.get('nota') as string,
     dnl_status: formData.get('dnl_status') as string,
+    is_archived: formData.get('is_archived') === 'true',
+    distanza_km: formData.get('distanza_km') as string || null
   }
 
   const { error } = await admin
@@ -128,6 +132,38 @@ export async function deleteCantiere(clientId: string, cantiereId: string) {
   const { error } = await admin
     .from('cantieri')
     .delete()
+    .eq('id', cantiereId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/admin/clients/${clientId}/cantieri`)
+  revalidatePath('/')
+}
+
+export async function toggleArchiveCantiere(clientId: string, cantiereId: string, currentStatus: boolean) {
+  const admin = createAdminClient()
+  
+  const { error } = await admin
+    .from('cantieri')
+    .update({ is_archived: !currentStatus })
+    .eq('id', cantiereId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/admin/clients/${clientId}/cantieri`)
+  revalidatePath('/')
+}
+
+export async function prorogaCantiere(clientId: string, cantiereId: string, nuovaData: string) {
+  const admin = createAdminClient()
+  
+  const { error } = await admin
+    .from('cantieri')
+    .update({ a: nuovaData })
     .eq('id', cantiereId)
 
   if (error) {

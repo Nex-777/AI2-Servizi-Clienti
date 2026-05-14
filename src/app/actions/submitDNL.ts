@@ -4,7 +4,6 @@ import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { resend } from '@/utils/resend'
 import { revalidatePath } from 'next/cache'
-import { getCoordinates, getRoadDistance } from '@/utils/geo-services'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +24,6 @@ export interface CommittenteData {
   provincia: string
   // solo ente_pubblico
   cup: string
-  is_verified?: boolean
 }
 
 export interface CantiereData {
@@ -47,10 +45,7 @@ export interface CantiereData {
   n_operai: string
   nota: string
   cod_univoco?: string
-  lat: number | null
-  lon: number | null
-  is_verified: boolean
-  manual_km?: number | null
+  distanza_km?: string | null
 }
 
 export interface SubappaltatoreData {
@@ -100,153 +95,22 @@ function fmtEuro(v: string | null | undefined) {
   return `€ ${n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function fmtBool(v: boolean) {
-  return v ? 'Sì' : 'No'
-}
-
-function buildEmailText(
-  clientName: string,
-  committente: CommittenteData,
-  cantiere: CantiereData,
-  subappaltatori: SubappaltatoreData[],
-  appalto_subappalto: string = 'Appalto',
-  appaltatore?: { ragione_sociale: string; cf_piva: string }
-): string {
-  const now = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })
-
-  const tipoLabel = {
-    privato: 'Privato Cittadino',
-    ente_pubblico: 'Ente Pubblico / Stazione Appaltante',
-    azienda_privata: 'Azienda Privata (Giuridica)',
-  }[committente.tipo]
-
-  let committenteBlock = `--- COMMITTENTE ---
-Tipo:                 ${tipoLabel}`
-
-  if (committente.tipo === 'privato') {
-    committenteBlock += `
-Codice Fiscale:       ${fmt(committente.cf)}
-Cognome:              ${fmt(committente.cognome)}
-Nome:                 ${fmt(committente.nome)}`
-  } else {
-    committenteBlock += `
-Ragione Sociale:      ${fmt(committente.ragione_sociale)}
-Codice Fiscale:       ${fmt(committente.cf)}
-Partita IVA:          ${fmt(committente.piva)}`
-  }
-
-  committenteBlock += `
-Via:                  ${fmt(committente.via)}
-Civico:               ${fmt(committente.civico)}
-Comune:               ${fmt(committente.comune)}
-Provincia:            ${fmt(committente.provincia)}
-CAP:                  ${fmt(committente.cap)}`
-
-  if (committente.tipo === 'ente_pubblico') {
-    committenteBlock += `
-CUP:                  ${fmt(committente.cup)}`
-  }
-
-  let appaltatoreBlock = ''
-  if (appalto_subappalto === 'Subappalto' && appaltatore) {
-    appaltatoreBlock = `
---- APPALTATORE (DITTA AFFIDATARIA) ---
-Ragione Sociale:      ${fmt(appaltatore.ragione_sociale)}
-Codice Fiscale/PI:    ${fmt(appaltatore.cf_piva)}
-`
-  }
-
-  let cantiereBlock = `--- CANTIERE (${appalto_subappalto.toUpperCase()}) ---
-Codice CNCE Unico:    ${fmt(cantiere.cod_univoco)}
-Via:                  ${fmt(cantiere.via)}
-Civico:               ${fmt(cantiere.civico)}
-Comune:               ${fmt(cantiere.comune)}
-Provincia:            ${fmt(cantiere.prov)}
-CAP:                  ${fmt(cantiere.cap)}
-Sisma 2016:           ${fmtBool(cantiere.sisma)}
-Attività Svolta:      ${fmt(cantiere.attivita_svolta)}
-Descrizione Lavori:   ${fmt(cantiere.descrizione_lavori)}
-Data Inizio:          ${fmt(cantiere.data_inizio)}
-Data Fine:            ${fmt(cantiere.data_fine)}
-Importo Complessivo:  ${fmtEuro(cantiere.importo_complessivo)}
-Importo Lavori Edili: ${fmtEuro(cantiere.importo_lavori_edili)}
-Importo Contratto:    ${fmtEuro(cantiere.importo_contratto)}
-N° Autonomi:          ${fmt(cantiere.n_autonomi)}
-N° Imprese:           ${fmt(cantiere.n_imprese)}
-N° Operai:            ${fmt(cantiere.n_operai)}
-Note:                 ${fmt(cantiere.nota)}`
-
-  let subBlock = ''
-  if (subappaltatori.length === 0) {
-    subBlock = '--- SUBAPPALTATORI ---\nNessun subappaltatore dichiarato.'
-  } else {
-    subBlock = subappaltatori.map((s, i) => {
-      const tipo = s.tipo_edile === 'edile' ? 'EDILE' : 'NON EDILE'
-      let block = `--- SUBAPPALTATORE ${i + 1} (${tipo}) ---
-Ragione Sociale:      ${fmt(s.ragione_sociale)}
-Codice Fiscale:       ${fmt(s.codice_fiscale)}
-Partita IVA:          ${fmt(s.partita_iva)}`
-      if (s.tipo_edile === 'edile') {
-        block += `
-N° Iscrizione CE:     ${fmt(s.numero_iscrizione_ce)}`
-      }
-      block += `
-Via:                  ${fmt(s.via)}
-Civico:               ${fmt(s.civico)}
-Comune:               ${fmt(s.comune)}
-Provincia:            ${fmt(s.provincia)}
-CAP:                  ${fmt(s.cap)}
-Telefono:             ${fmt(s.telefono)}
-Email:                ${fmt(s.email)}
-Tipo Lavoro:          ${fmt(s.tipo_lavoro)}
-Attività Svolta:      ${fmt(s.attivita_svolta)}
-Data Inizio Presunta: ${fmt(s.data_inizio_presunta)}
-Data Fine Presunta:   ${fmt(s.data_fine_presunta)}
-Descrizione Lavori:   ${fmt(s.descrizione_lavori)}
-Importo Edile:        ${fmtEuro(s.importo_edile)}
-Lavoratore Autonomo:  ${fmtBool(s.lavoratore_autonomo)}`
-      return block
-    }).join('\n\n')
-  }
-
-  return `
-=====================================
-  NUOVA DENUNCIA CANTIERE — AI2
-=====================================
-Cliente:  ${clientName}
-Inviata:  ${now}
-
-${appaltatoreBlock}
-${committenteBlock}
-
-${cantiereBlock}
-
-${subBlock}
-=====================================
-`.trim()
-}
-
 // ─── Main Action ──────────────────────────────────────────────────────────────
 
-export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: boolean; cantiereId?: string; error?: string }> {
+export async function submitDNL(payload: SubmitDNLPayload) {
   try {
     const supabase = await createClient()
     const admin = createAdminClient()
-
-    // 1. Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) return { success: false, error: 'Sessione scaduta. Rieffettuare il login.' }
-
-    // 1b. Determine target client_id
-    let targetClientId = user.id
     
-    // Sanitize clientId: handle case where it might be string "undefined" or "null"
-    const providedClientId = (payload.clientId === 'undefined' || payload.clientId === 'null') 
-      ? undefined 
-      : payload.clientId;
+    // 1. Auth check
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Non autorizzato.' }
+
+    // Logic to determine target client ID (Admin impersonation vs Regular User)
+    const providedClientId = payload.clientId
+    let targetClientId = user.id
 
     if (providedClientId && providedClientId !== user.id) {
-      // Check if user is admin
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -260,79 +124,32 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
       }
     }
 
-    // 2. Get profile for email and geo-coordinates
+    // 2. Get profile for email
     const { data: profile } = await admin
       .from('profiles')
-      .select('email, indirizzo, comune, provincia, lat, lon')
+      .select('email')
       .eq('id', targetClientId)
       .single()
 
     const clientName = profile?.email || user.email || 'Cliente sconosciuto'
-
-    // 2.1. Handle HQ Geocoding if missing
-    let hqLat = profile?.lat
-    let hqLon = profile?.lon
-
-    if (profile && (!hqLat || !hqLon) && profile.indirizzo && profile.comune) {
-      const hqCoords = await getCoordinates(profile.indirizzo, profile.comune, profile.provincia || '')
-      if (hqCoords) {
-        hqLat = hqCoords.lat
-        hqLon = hqCoords.lon
-        // Update profile in background to cache coords
-        await admin.from('profiles').update({ lat: hqLat, lon: hqLon, is_verified: true }).eq('id', targetClientId)
-      }
-    }
-
     const { committente, cantiere, subappaltatori, appalto_subappalto = 'Appalto', appaltatore } = payload
 
-    // 2.2. Handle Distance and Geocoding
-    let cantiereLat: number | null = cantiere.lat
-    let cantiereLon: number | null = cantiere.lon
-    let distanzaKm: number | null = null
-
-    // 3. Priority to manual KM if provided
-    if (cantiere.manual_km && cantiere.manual_km > 0) {
-      distanzaKm = cantiere.manual_km
-    }
-
-    // 4. Geocode if verified and coordinates are missing
-    if (cantiere.is_verified && (!cantiereLat || !cantiereLon)) {
-      const cantiereCoords = await getCoordinates(cantiere.via, cantiere.comune, cantiere.prov)
-      if (cantiereCoords) {
-        cantiereLat = cantiereCoords.lat
-        cantiereLon = cantiereCoords.lon
-      }
-    }
-
-    // 5. Distance calculation (Manual KM > Auto GPS)
-    if (!distanzaKm && cantiereLat && cantiereLon && hqLat && hqLon) {
-      distanzaKm = await getRoadDistance(hqLat, hqLon, cantiereLat, cantiereLon)
-    }
-
-    // 3. Build the committente label for the legacy 'committente' field
+    // 3. Build the committente label
     const committenteLabel = committente.tipo === 'privato'
       ? `${committente.cognome} ${committente.nome}`.trim() || 'Privato'
       : committente.ragione_sociale || 'Ente/Azienda'
 
-    // 4. Build the Cantiere Name (Legacy 'cantiere' field)
-    // format: [CODICE] VIA CIVICO COMUNE PROV COMMITTENTE/APPALTATORE
-    // Wait, the 'cantiere' field in DB is traditionally just the address, 
-    // but the user wants the display in the dropdown to be composed.
-    // To ensure compatibility, we'll keep 'cantiere' as the address (via),
-    // and let the frontend compose the label as we did in FoglioPresenze.tsx.
-    
-    // 5. Generate Cantiere Code
+    // 4. Generate Cantiere Code
     const { generateAndAssignCantiereCode } = await import('@/utils/codeGenerator')
     const autoCode = await generateAndAssignCantiereCode(targetClientId)
 
-    // 6. Insert cantiere
+    // 5. Insert cantiere (Simplified: no geo calculation)
     const { data: newCantiere, error: insertError } = await admin
       .from('cantieri')
       .insert({
         client_id: targetClientId,
         cod: autoCode,
-        // existing fields (legacy compat)
-        cantiere: cantiere.via, // We keep the address here
+        cantiere: cantiere.via,
         civico: cantiere.civico,
         comune: cantiere.comune,
         cap: cantiere.cap,
@@ -344,10 +161,8 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
         cup: committente.tipo === 'ente_pubblico' ? committente.cup : null,
         sisma: cantiere.sisma ? 'SI' : 'NO',
         appalto_subappalto: appalto_subappalto,
-        // appaltatore fields (new)
         appaltatore_ragione_sociale: appaltatore?.ragione_sociale || null,
         appaltatore_cf: appaltatore?.cf_piva || null,
-        // new DNL fields
         tipo_committente: committente.tipo,
         committente_cf: committente.cf,
         committente_cognome: committente.cognome || null,
@@ -369,11 +184,7 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
         n_operai: cantiere.n_operai ? parseInt(cantiere.n_operai) : null,
         nota: cantiere.nota || null,
         dnl_status: 'confermato',
-        // geo fields
-        lat: cantiereLat,
-        lon: cantiereLon,
-        distanza_km: distanzaKm,
-        is_verified: cantiere.is_verified || false,
+        distanza_km: cantiere.distanza_km || null
       })
       .select('id')
       .single()
@@ -385,7 +196,7 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
 
     const cantiereId = newCantiere.id
 
-    // 5. Insert subappaltatori
+    // 6. Insert subappaltatori
     if (subappaltatori.length > 0) {
       const subRows = subappaltatori.map((s) => ({
         cantiere_id: cantiereId,
@@ -399,42 +210,73 @@ export async function submitDNL(payload: SubmitDNLPayload): Promise<{ success: b
         comune: s.comune || null,
         provincia: s.provincia || null,
         telefono: s.telefono || null,
-        email_sub: s.email || null,
+        email: s.email || null,
         tipo_edile: s.tipo_edile,
-        numero_iscrizione_ce: s.tipo_edile === 'edile' ? s.numero_iscrizione_ce : null,
-        tipo_lavoro: s.tipo_lavoro || 'subappalto',
+        numero_iscrizione_ce: s.numero_iscrizione_ce || null,
+        tipo_lavoro: s.tipo_lavoro || null,
         attivita_svolta: s.attivita_svolta || null,
         data_inizio_presunta: s.data_inizio_presunta || null,
         data_fine_presunta: s.data_fine_presunta || null,
         descrizione_lavori: s.descrizione_lavori || null,
         importo_edile: s.importo_edile ? parseFloat(s.importo_edile.replace(',', '.')) : null,
-        lavoratore_autonomo: s.lavoratore_autonomo || false,
+        lavoratore_autonomo: s.lavoratore_autonomo || false
       }))
 
-      const { error: subError } = await admin
-        .from('subappaltatori_cantiere')
-        .insert(subRows)
-
+      const { error: subError } = await admin.from('subappaltatori_cantiere').insert(subRows)
       if (subError) {
         console.error('Errore inserimento subappaltatori:', subError)
-        // Non blocchiamo: il cantiere è già salvato, logghiamo l'errore
       }
     }
 
-    // 6. Build and send email
-    const emailText = buildEmailText(clientName, committente, cantiere, subappaltatori, appalto_subappalto, appaltatore)
+    // 7. Send notification email
+    const month = new Date().toLocaleString('it-IT', { month: 'long' })
+    const year = new Date().getFullYear()
 
-    await resend.emails.send({
-      from: 'AI2 Servizi Clienti <notifiche@agenziaitalia2.it>',
-      to: [process.env.ADMIN_EMAIL || 'paoletti@agenziaitalia2.it'],
-      subject: `Nuova DNL Cantiere — ${committenteLabel} — ${cantiere.comune} (${cantiere.prov})`,
-      text: emailText,
-    })
+    try {
+      await resend.emails.send({
+        from: 'AI2 Servizi Clienti <noreply@ai2serviziclienti.it>',
+        to: ['gis.cantieri@gmail.com'],
+        subject: `DNL - [${autoCode}] - ${clientName.split('@')[0].toUpperCase()}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #D32F2F;">Nuova DNL Ricevuta</h2>
+            <p>È stato inserito un nuovo cantiere <strong>${autoCode}</strong> per il cliente <strong>${clientName}</strong>.</p>
+            
+            <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; color: #444;">Dettagli Cantiere</h3>
+            <ul style="list-style: none; padding: 0;">
+              <li><strong>Indirizzo:</strong> ${fmt(cantiere.via)}, ${fmt(cantiere.civico)} - ${fmt(cantiere.comune)} (${fmt(cantiere.prov)})</li>
+              <li><strong>Inizio/Fine:</strong> ${fmt(cantiere.data_inizio)} / ${fmt(cantiere.data_fine)}</li>
+              <li><strong>Distanza dalla sede:</strong> ${fmt(cantiere.distanza_km)}</li>
+              <li><strong>Attività:</strong> ${fmt(cantiere.attivita_svolta)}</li>
+              <li><strong>Importo Lavori Edili:</strong> ${fmtEuro(cantiere.importo_lavori_edili)}</li>
+            </ul>
+ 
+            <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; color: #444;">Committente</h3>
+            <p>${fmt(committenteLabel)} (${fmt(committente.cf || committente.piva)})</p>
 
-    revalidatePath('/')
+            ${subappaltatori.length > 0 ? `
+              <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; color: #444;">Subappaltatori (${subappaltatori.length})</h3>
+              <ul style="list-style: none; padding: 0;">
+                ${subappaltatori.map(s => `<li>- ${s.ragione_sociale} (${s.tipo_edile})</li>`).join('')}
+              </ul>
+            ` : ''}
+
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #888;">
+              Sistema automatico AI2 Servizi Clienti
+            </div>
+          </div>
+        `
+      })
+    } catch (err) {
+      console.error('Errore invio email:', err)
+    }
+
+    revalidatePath('/dashboard')
+    revalidatePath('/admin/cantieri')
     return { success: true, cantiereId }
-  } catch (err: any) {
-    console.error('submitDNL error:', err)
-    return { success: false, error: err.message || 'Errore imprevisto.' }
+
+  } catch (error: any) {
+    console.error('submitDNL Critical Error:', error)
+    return { success: false, error: 'Si è verificato un errore imprevisto durante il salvataggio.' }
   }
 }

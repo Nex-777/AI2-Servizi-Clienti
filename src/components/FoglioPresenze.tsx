@@ -2,10 +2,11 @@
 
 import { useState, useTransition, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle, RotateCcw, StickyNote, ExternalLink } from 'lucide-react'
+import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle, RotateCcw, StickyNote, ExternalLink, Printer, Download, Copy } from 'lucide-react'
 import { useLoading } from '@/components/LoadingProvider'
 
 import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata, reopenFoglio } from '@/app/actions/confirm'
+import { exportToExcel } from '@/utils/export-utils'
 
 // — Color Map: ogni codice ha la sua tavolozza coerente —
 const CAUSALE_COLORS: Record<string, { bg: string; text: string; border: string; dot: string; riepilogoBg: string; riepilogoText: string }> = {
@@ -49,6 +50,31 @@ const CIG_OPZIONI = [
   { codice: '*GK', label: 'CIG Ord. atmos. zero ore — con anticipo' },
 ]
 
+// — Trasferte KM —
+const KM_MAP: Record<string, string> = {
+  '0': '0',
+  'Fino a 10Km': '4800',
+  'Da 10Km a 20Km': '4801',
+  'Da 20Km a 30Km': '4802',
+  'Oltre 30Km': '4803',
+  'Oltre i 30Km': '4803' // Fallback per variazione testo
+}
+
+function getKMCode(dist: string | null | undefined): string {
+  if (!dist || dist === '0' || dist === 'SEDE') return '0'
+  if (dist.includes('10Km') && dist.includes('Fino')) return '4800'
+  if (dist.includes('10') && dist.includes('20')) return '4801'
+  if (dist.includes('20') && dist.includes('30')) return '4802'
+  if (dist.includes('Oltre') || dist.includes('>30')) return '4803'
+  // Fallback to direct map check if includes fail
+  const direct = KM_MAP[dist]
+  if (direct) return direct
+  
+  return '0' // Default fallback
+}
+
+const ALL_KM_CODES = ['0', '4800', '4801', '4802', '4803']
+
 // — Lista causali (dinamica: edile → FD/PD) —
 function getElencoCausali(isEdile: boolean) {
   return [
@@ -66,6 +92,44 @@ function getElencoCausali(isEdile: boolean) {
     { codice: '*AT', label: 'Allattamento' },
     { codice: 'GEN', label: 'Generale' },
   ]
+}
+
+
+// — Utility: trova il cantiere con il numero più alto —
+function getHighestCantiere(cantieri: any[]) {
+  const valid = (cantieri || []).filter(c => {
+    if (c.is_archived) return false
+    if (!c.a) return true
+    try {
+      let expiry: Date
+      if (c.a.includes('/')) {
+        const parts = c.a.split('/')
+        if (parts.length !== 3) return true
+        expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+      } else {
+        expiry = new Date(c.a)
+      }
+      expiry.setHours(23, 59, 59, 999)
+      return expiry >= new Date()
+    } catch { return true }
+  })
+
+  if (valid.length === 0) return null
+
+  const getNum = (c: any) => {
+    const s = String(c.causal || c.cod || '')
+    const m = s.match(/\d+/)
+    return m ? parseInt(m[0], 10) : 0
+  }
+
+  const sorted = [...valid].sort((a, b) => {
+    const nA = getNum(a)
+    const nB = getNum(b)
+    if (nA !== nB) return nB - nA
+    return String(b.causal || b.cod || '').localeCompare(String(a.causal || a.cod || ''))
+  })
+
+  return sorted[0]
 }
 
 
@@ -598,15 +662,18 @@ function SedeCell({
     })
   }
 
-  // Filter valid cantieri (DD/MM/YYYY)
   const validCantieri = (cantieri || []).filter(c => {
+    if (c.is_archived) return false
     if (!c.a) return true
     try {
-      const parts = c.a.split('/')
-      if (parts.length !== 3) return true
-      // Parse DD/MM/YYYY
-      const expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
-      // Set to end of day
+      let expiry: Date
+      if (c.a.includes('/')) {
+        const parts = c.a.split('/')
+        if (parts.length !== 3) return true
+        expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+      } else {
+        expiry = new Date(c.a)
+      }
       expiry.setHours(23, 59, 59, 999)
       return expiry >= new Date()
     } catch {
@@ -617,19 +684,10 @@ function SedeCell({
   // Options for dropdown
   const options = (cantieri || []).length > 0 
     ? validCantieri.map(c => {
-        const identifier = c.causal || c.cod
-        const labelParts = []
-        if (identifier) labelParts.push(`[${identifier}]`)
-        if (c.cantiere) labelParts.push(c.cantiere)
-        if (c.civico) labelParts.push(c.civico)
-        if (c.comune) labelParts.push(c.comune)
-        if (c.prov) labelParts.push(c.prov)
-        if (c.committente) labelParts.push(c.committente)
-        if (c.distanza_km) labelParts.push(`(${c.distanza_km.toFixed(1)} KM)`)
-
+        const identifier = c.cod || c.causal
         return { 
           value: identifier || c.cantiere, 
-          label: labelParts.join(' ').toUpperCase()
+          label: identifier ? identifier.toUpperCase() : (c.cantiere || '').toUpperCase()
         }
       })
     : [
@@ -996,9 +1054,7 @@ function CausaleCell({
                       {elencoCausali.map(g => (
                         <option key={g.codice} value={g.codice}>{g.codice} — {g.label}</option>
                       ))}
-                      {isEdile && (
-                        <option value="__CIG__">CIG — Cassa Integrazione</option>
-                      )}
+                      <option value="__CIG__">CIG — Cassa Integrazione</option>
                     </select>
                     {isCigCode(codice) && (
                       <p className="mt-1 text-[10px] text-amber-700 font-semibold">
@@ -1249,21 +1305,36 @@ function DipendenteSectionDesktop({
 
     let defaultValue: string | null = null
 
-    // 1. Check for active cantieri (pick the most recent one)
-    const validCantieri = (cantieri || []).filter(c => {
-      if (!c.a) return true
-      try {
-        const parts = c.a.split('/')
-        if (parts.length !== 3) return true
-        const expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
-        expiry.setHours(23, 59, 59, 999)
-        return expiry >= new Date()
-      } catch { return true }
-    })
-
-    if (validCantieri.length > 0) {
-      defaultValue = validCantieri[0].cod || validCantieri[0].cantiere
+    // 1. Check for active cantieri (pick the most recent one / highest number for Edile)
+    if (isEdile) {
+      const highest = getHighestCantiere(cantieri)
+      if (highest) {
+        defaultValue = highest.causal || highest.cod || highest.cantiere
+      }
     } else {
+      const validCantieri = (cantieri || []).filter(c => {
+        if (c.is_archived) return false
+        if (!c.a) return true
+        try {
+          let expiry: Date
+          if (c.a.includes('/')) {
+            const parts = c.a.split('/')
+            if (parts.length !== 3) return true
+            expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+          } else {
+            expiry = new Date(c.a)
+          }
+          expiry.setHours(23, 59, 59, 999)
+          return expiry >= new Date()
+        } catch { return true }
+      })
+
+      if (validCantieri.length > 0) {
+        defaultValue = validCantieri[0].cod || validCantieri[0].cantiere
+      }
+    }
+
+    if (!defaultValue) {
       // 2. Fallback to HQ if only one sede
       const hasAdditionalSedi = additionalSedi && additionalSedi.length > 0
       const onlyOneSede = !hasAdditionalSedi && (profile?.numero_sede === '1' || !profile?.numero_sede)
@@ -1281,7 +1352,7 @@ function DipendenteSectionDesktop({
       fd.set('valore', defaultValue)
       saveGiornata(fd)
     }
-  }, [cantieri, additionalSedi, profile, dip.id, daysInMonth, isConfermato, dip.giornate])
+  }, [cantieri, additionalSedi, profile, dip.id, daysInMonth, isConfermato, dip.giornate, isEdile])
 
   // Sync causali when dip prop changes (e.g. after server revalidation)
   useEffect(() => {
@@ -1320,7 +1391,8 @@ function DipendenteSectionDesktop({
     ordinarie: 0,
     straordinario: 0,
     giorniLavorati: 0,
-    codici: {} as Record<string, number>
+    codici: {} as Record<string, number>,
+    kmSummary: {} as Record<string, number>
   }
 
   days.forEach(d => {
@@ -1339,6 +1411,16 @@ function DipendenteSectionDesktop({
       if (c?.ore && c.codice) {
         summary.codici[c.codice] = (summary.codici[c.codice] || 0) + c.ore
         oreGiustificateGiorno += c.ore
+      }
+    }
+    
+    // Calcolo KM Trasferte: solo giorni con ore lavorate effettive > 0
+    const trulyWorked = oreLavorateEffettive - oreGiustificateGiorno
+    if (trulyWorked > 0 && giornata?.turno) {
+      const cantiere = (cantieri || []).find(c => (c.cod || c.causal) === giornata.turno)
+      const kmCode = getKMCode(cantiere?.distanza_km)
+      if (kmCode !== null) {
+        summary.kmSummary[kmCode] = (summary.kmSummary[kmCode] || 0) + 1
       }
     }
     
@@ -1766,8 +1848,21 @@ function DipendenteSectionDesktop({
                 <td className="bg-slate-100 border border-slate-200 px-1 py-1 text-center font-bold text-slate-500 min-w-[45px]">
                   —
                 </td>
-                {/* Summary Space for Turno row */}
-                <td className="bg-slate-50 border-l-2 border-l-slate-400" colSpan={4}></td>
+                {/* Summary Space for Turno row — KM SUMMARY */}
+                <td className="bg-slate-50 border-l-2 border-l-slate-400 p-2" colSpan={4}>
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {ALL_KM_CODES.map(code => {
+                      const count = summary.kmSummary[code] || 0
+                      if (count === 0 && code !== '0') return null // Mostra '0' sempre, altri solo se > 0? No, seguiamo istruzioni
+                      return (
+                        <div key={code} className={`flex flex-col items-center bg-white border ${count > 0 ? 'border-blue-200 bg-blue-50/30' : 'border-slate-200'} rounded px-1.5 py-0.5 min-w-[55px] shadow-sm`}>
+                          <span className={`text-[8px] ${count > 0 ? 'text-blue-600' : 'text-slate-400'} font-bold uppercase tracking-tighter`}>{code === '0' ? 'SEDE' : code}</span>
+                          <span className={`text-[11px] font-black ${count > 0 ? 'text-blue-900' : 'text-slate-400'}`}>{count} gg</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </td>
               </tr>
 
               {/* DELETE PREVIOUS TOTALS ROW - Not needed anymore as it's in the grid */}
@@ -1783,12 +1878,14 @@ function CigCantiereCard({
   cantiereCod,
   data,
   faseSalvata,
+  ticketSalvato,
   cantiereInfo,
   onSave,
   savingFase,
   daysInMonth,
   anno,
-  mese
+  mese,
+  isAdmin = false
 }: {
   cantiereCod: string
   data: {
@@ -1800,31 +1897,38 @@ function CigCantiereCard({
     dipendenti: { nome: string; giorni: Record<number, { codice: string; ore: number; meteo?: string }> }[]
   }
   faseSalvata: string
+  ticketSalvato: string
   cantiereInfo: any
-  onSave: (cod: string, fase: string) => void
+  onSave: (cod: string, fase: string, ticket: string) => void
   savingFase: boolean
   daysInMonth: number
   anno: number
   mese: number
+  isAdmin?: boolean
 }) {
   const [localFase, setLocalFase] = useState(faseSalvata)
+  const [localTicket, setLocalTicket] = useState(ticketSalvato)
+  const [copied, setCopied] = useState(false)
   const hasFase = faseSalvata.trim().length > 0
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-
-  // Colonne che hanno almeno 1 ora CIG (per evidenziare)
   const activeDays = new Set(Object.keys(data.orePerGiorno).map(Number))
+  const labelW = 'w-24 md:w-32'
 
-  const colW = '' // Flexible
-  const labelW = 'w-24 md:w-32' // Smaller on mobile, fixed on desktop
+  useEffect(() => {
+    setLocalFase(faseSalvata)
+    setLocalTicket(ticketSalvato)
+  }, [faseSalvata, ticketSalvato])
+
+  const handleCopy = () => {
+    if (!localTicket) return
+    navigator.clipboard.writeText(localTicket)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${
-      hasFase ? 'border-green-300' : 'border-amber-300'
-    }`}>
-      {/* === Cantiere header bar === */}
-      <div className={`px-4 py-2.5 flex items-center justify-between ${
-        hasFase ? 'bg-green-600' : 'bg-[#4CAF50]'
-      }`}>
+    <div className={`rounded-xl border overflow-hidden ${hasFase ? 'border-green-300 shadow-sm' : 'border-amber-300'}`}>
+      <div className={`px-4 py-2.5 flex items-center justify-between ${hasFase ? 'bg-green-600' : 'bg-[#4CAF50]'}`}>
         <div className="flex items-center gap-3">
           <span className="text-white font-black text-lg tracking-tight">{cantiereCod}</span>
           {cantiereInfo?.cantiere && (
@@ -1834,84 +1938,51 @@ function CigCantiereCard({
             Tot. {data.oreTotali}h CIG
           </span>
         </div>
-        {hasFase && (
-          <span className="text-white/90 text-xs font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-            ✓ Fase: {faseSalvata}
-          </span>
-        )}
       </div>
 
-      {/* === Tabella calendario === */}
       <div className="overflow-x-auto">
         <table className="text-[11px] w-full border-collapse table-fixed">
           <thead>
-            {/* Riga ORE — totale per giorno */}
             <tr className="bg-[#4CAF50] border-b border-green-400">
-              <td className={`sticky left-0 z-10 bg-[#4CAF50] text-white font-bold px-2 py-1 ${labelW} border-r border-green-400`}>
-                ore
-              </td>
+              <td className={`sticky left-0 z-10 bg-[#4CAF50] text-white font-bold px-2 py-1 ${labelW} border-r border-green-400`}>ore</td>
               {days.map(d => (
-                <td key={d} className={`text-center py-1 font-bold text-white border-r border-green-400/50 ${
-                  activeDays.has(d) ? 'bg-[#388E3C]' : ''
-                }`}>
+                <td key={d} className={`text-center py-1 font-bold text-white border-r border-green-400/50 ${activeDays.has(d) ? 'bg-[#388E3C]' : ''}`}>
                   {data.orePerGiorno[d] || 0}
                 </td>
               ))}
             </tr>
-
-            {/* Riga DIP — n. dipendenti CIG per giorno */}
-
-
-            {/* Riga numerazione giorni */}
             <tr className="bg-slate-100 border-b border-slate-200">
               <td className={`sticky left-0 z-10 bg-slate-100 px-2 py-1 ${labelW} text-slate-500 font-bold text-[10px] border-r border-slate-200 truncate`}>
-                {cantiereInfo?.cantiere
-                  ? cantiereInfo.cantiere.substring(0, 18)
-                  : cantiereCod}
+                GIORNO
               </td>
               {days.map(d => {
                 const date = new Date(anno, mese - 1, d)
                 const isDomenica = date.getDay() === 0
                 const isF = isFestivo(anno, mese, d)
                 const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
-                
                 let cellClass = activeDays.has(d) ? 'bg-yellow-100 text-yellow-800' : 'text-slate-400'
                 if (isDomenica) cellClass = 'bg-red-50 text-red-600'
                 else if (isF) cellClass = 'bg-yellow-50 text-yellow-600'
-
                 return (
                   <td key={d} className={`text-center py-0.5 font-bold border-r border-slate-200 leading-tight relative ${cellClass}`}>
                     <div className="text-[10px]">{d}</div>
                     <div className="text-[8px] opacity-70">{dayName}</div>
-                    {/* Indicatore festivo su domenica */}
-                    {isDomenica && isF && (
-                      <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-yellow-500 rounded-full" />
-                    )}
                   </td>
                 )
               })}
             </tr>
           </thead>
-
           <tbody>
             {data.dipendenti.map((dip, di) => (
               <tr key={di} className={di % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
-                {/* Nome dipendente */}
                 <td className={`sticky left-0 z-10 bg-inherit px-2 py-1.5 ${labelW} font-semibold text-slate-700 border-r border-slate-100 truncate`}>
                   {dip.nome}
                 </td>
-                {/* Celle per giorno */}
                 {days.map(d => {
                   const entry = dip.giorni[d]
                   const cs = entry ? getCausaleStyle(entry.codice) : null
                   return (
-                    <td
-                      key={d}
-                      className={`text-center py-0.5 border-r border-slate-100 font-mono font-bold text-[9px] leading-tight ${
-                        entry ? `${cs!.bg} ${cs!.text}` : ''
-                      }`}
-                      title={entry?.meteo ? `${entry.codice} — ${entry.ore}h — ${entry.meteo}` : entry ? `${entry.codice} ${entry.ore}h` : undefined}
-                    >
+                    <td key={d} className={`text-center py-0.5 border-r border-slate-100 font-mono font-bold text-[9px] leading-tight ${entry ? `${cs!.bg} ${cs!.text}` : ''}`}>
                       {entry ? (
                         <>
                           <div className="text-[9px]">{entry.codice}</div>
@@ -1927,38 +1998,54 @@ function CigCantiereCard({
         </table>
       </div>
 
-      {/* === Fase lavorativa === */}
-      <div className={`px-4 py-3 border-t ${
-        hasFase ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
-      }`}>
-        <label className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 block ${
-          hasFase ? 'text-green-700' : 'text-amber-700'
-        }`}>
-          Fase Lavorativa <span className="text-red-500">*</span>
-          {hasFase && <span className="ml-2 text-green-600 normal-case font-normal">✓ Salvata</span>}
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
+      <div className={`px-4 py-4 border-t space-y-4 ${hasFase ? 'bg-green-50/30' : 'bg-amber-50/30'}`}>
+        <div>
+          <label className="text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2 text-slate-500">
+            Fase Lavorativa <span className="text-red-500">*</span>
+            {hasFase && <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Salvata</span>}
+          </label>
+          <textarea
             value={localFase}
             onChange={e => setLocalFase(e.target.value)}
-            placeholder="Es. Fondazioni, Muratura, Copertura..."
-            className="flex-1 text-sm rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all"
+            placeholder="Descrizione dettagliata della fase lavorativa svolta..."
+            rows={2}
+            className="w-full text-sm rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all resize-none"
           />
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex-1 w-full">
+            <label className="text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2 text-slate-500">
+              Ticket INPS (Riservato Studio)
+              {localTicket && (
+                <button onClick={handleCopy} className={`text-[9px] px-1.5 py-0.5 rounded transition-all flex items-center gap-1 ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
+                  <Copy className="h-2.5 w-2.5" /> {copied ? 'Copiato!' : 'Copia'}
+                </button>
+              )}
+            </label>
+            <input
+              type="text"
+              value={localTicket}
+              onChange={e => setLocalTicket(e.target.value)}
+              placeholder="Es. 05CD95C26000053U"
+              readOnly={!isAdmin}
+              className={`w-full text-sm font-mono rounded-xl border px-3 py-2 outline-none transition-all ${
+                !isAdmin ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400'
+              }`}
+            />
+          </div>
           <button
-            onClick={() => onSave(cantiereCod, localFase)}
+            onClick={() => onSave(cantiereCod, localFase, localTicket)}
             disabled={savingFase || !localFase.trim()}
-            className="px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-50 transition-all whitespace-nowrap"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 disabled:opacity-50 transition-all shadow-md shadow-amber-600/10"
           >
-            {savingFase ? 'Salvataggio...' : 'Salva Fase'}
+            {savingFase ? 'Salvataggio...' : 'Salva Dati CIG'}
           </button>
         </div>
       </div>
     </div>
   )
 }
-
-
 function DipendenteSectionMobile({
   dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 
 }: { 
@@ -1982,12 +2069,75 @@ function DipendenteSectionMobile({
     setCausali(dip.causali)
   }, [dip.causali])
 
+  // Auto-fill SEDE logic
+  useEffect(() => {
+    if (isConfermato) return
+    const allEmpty = dip.giornate.every(g => !g.turno)
+    if (!allEmpty) return
+
+    let defaultValue: string | null = null
+
+    // 1. Check for active cantieri (pick the most recent one / highest number for Edile)
+    if (isEdile) {
+      const highest = getHighestCantiere(cantieri)
+      if (highest) {
+        defaultValue = highest.causal || highest.cod || highest.cantiere
+      }
+    } else {
+      const validCantieri = (cantieri || []).filter(c => {
+        if (c.is_archived) return false
+        if (!c.a) return true
+        try {
+          let expiry: Date
+          if (c.a.includes('/')) {
+            const parts = c.a.split('/')
+            if (parts.length !== 3) return true
+            expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+          } else {
+            expiry = new Date(c.a)
+          }
+          expiry.setHours(23, 59, 59, 999)
+          return expiry >= new Date()
+        } catch { return true }
+      })
+
+      if (validCantieri.length > 0) {
+        defaultValue = validCantieri[0].cod || validCantieri[0].cantiere
+      }
+    }
+
+    if (!defaultValue) {
+      // 2. Fallback to HQ if only one sede
+      const hasAdditionalSedi = additionalSedi && additionalSedi.length > 0
+      const onlyOneSede = !hasAdditionalSedi && (profile?.numero_sede === '1' || !profile?.numero_sede)
+      if (onlyOneSede) {
+        defaultValue = profile?.numero_sede || '1'
+      }
+    }
+
+    if (defaultValue) {
+      const fd = new FormData()
+      fd.set('dipendente_id', dip.id)
+      fd.set('giorno', '1')
+      fd.set('alGiorno', String(daysInMonth))
+      fd.set('campo', 'turno')
+      fd.set('valore', defaultValue)
+      saveGiornata(fd)
+    }
+  }, [cantieri, additionalSedi, profile, dip.id, daysInMonth, isConfermato, dip.giornate, isEdile])
+
   const getGiornata = (g: number) => dip.giornate.find(x => x.giorno === g)
   const getCausale = (g: number, n: number) => causali.find(c => c.giorno === g && c.numero === n)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
   // Summary Totals logic (same as desktop)
-  const summary = { ordinarie: 0, straordinario: 0, giorniLavorati: 0, codici: {} as Record<string, number> }
+  const summary = { 
+    ordinarie: 0, 
+    straordinario: 0, 
+    giorniLavorati: 0, 
+    codici: {} as Record<string, number>,
+    kmSummary: {} as Record<string, number> 
+  }
   days.forEach(d => {
     const giornata = getGiornata(d)
     const oreLavorateEffettive = giornata?.ore_lavorate ?? 0
@@ -2001,6 +2151,17 @@ function DipendenteSectionMobile({
         oreGiustificateGiorno += c.ore
       }
     }
+
+    // Calcolo KM Trasferte: solo giorni con ore lavorate effettive > 0
+    const trulyWorked = oreLavorateEffettive - oreGiustificateGiorno
+    if (trulyWorked > 0 && giornata?.turno) {
+      const cantiere = (cantieri || []).find(c => (c.cod || c.causal) === giornata.turno)
+      const kmCode = getKMCode(cantiere?.distanza_km)
+      if (kmCode !== null) {
+        summary.kmSummary[kmCode] = (summary.kmSummary[kmCode] || 0) + 1
+      }
+    }
+
     const basePerOrdinarie = Math.min(oreLavorateEffettive, oreContrattuali)
     const effectiveOrd = Math.max(0, basePerOrdinarie - oreGiustificateGiorno)
     summary.ordinarie += effectiveOrd
@@ -2169,6 +2330,20 @@ function DipendenteSectionMobile({
           </div>
         </div>
 
+        {/* Trasferte KM Grid */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {ALL_KM_CODES.map(code => {
+            const count = summary.kmSummary[code] || 0
+            if (count === 0 && code !== '0') return null
+            return (
+              <div key={code} className={`flex justify-between items-center p-2 rounded-lg border ${count > 0 ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-200'}`}>
+                <span className={`text-[10px] font-bold ${count > 0 ? 'text-blue-700' : 'text-slate-400'}`}>{code === '0' ? 'SEDE' : code}</span>
+                <span className={`text-sm font-black ${count > 0 ? 'text-blue-900' : 'text-slate-400'}`}>{count} gg</span>
+              </div>
+            )
+          })}
+        </div>
+
         {/* Justifications Grid */}
         <div className="mt-3 grid grid-cols-3 gap-1.5">
           {Object.entries(totals).filter(([_, val]) => val > 0).map(([key, val]) => {
@@ -2187,7 +2362,7 @@ function DipendenteSectionMobile({
 }
 
 
-function GisSummaryModal({ dip, anno, mese, isEdile, onClose }: { dip: Dipendente, anno: number, mese: number, isEdile: boolean, onClose: () => void }) {
+function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip: Dipendente, anno: number, mese: number, isEdile: boolean, cantieri: any[], onClose: () => void }) {
   const daysInMonth = getDaysInMonth(anno, mese)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
@@ -2199,7 +2374,8 @@ function GisSummaryModal({ dip, anno, mese, isEdile, onClose }: { dip: Dipendent
     giorniLavorabili: 0,
     oreAssenza: 0,
     oreGiustificateTotali: 0,
-    causali: {} as Record<string, number>
+    causali: {} as Record<string, number>,
+    kmSummary: ALL_KM_CODES.reduce((acc, code) => ({ ...acc, [code]: 0 }), {} as Record<string, number>)
   }
 
   days.forEach(d => {
@@ -2241,6 +2417,13 @@ function GisSummaryModal({ dip, anno, mese, isEdile, onClose }: { dip: Dipendent
     }
     
     summary.oreAssenza += oreAssenzaGisDay
+
+    // KM Aggregation
+    if (workedEffective > 0 && g?.turno) {
+      const cInfo = (cantieri || []).find(c => (c.cod || c.cantiere) === g.turno)
+      const kmCode = getKMCode(cInfo?.distanza_km)
+      summary.kmSummary[kmCode]++
+    }
   })
 
   const nonGiustificate = Math.max(0, summary.oreTeoriche - (summary.oreLavorate + summary.oreGiustificateTotali))
@@ -2341,6 +2524,29 @@ function GisSummaryModal({ dip, anno, mese, isEdile, onClose }: { dip: Dipendent
                 </tr>
               </tbody>
             </table>
+
+            {/* KM Band Summary inside Modal */}
+            <div className="mt-12 bg-slate-50/50 rounded-3xl p-8 border border-slate-100">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Trasferte KM (Giorni Lavorati)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {ALL_KM_CODES.map(code => {
+                  const count = summary.kmSummary[code] || 0
+                  const isActive = count > 0
+                  return (
+                    <div key={code} className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all ${
+                      isActive ? 'bg-white border-blue-200 shadow-md shadow-blue-500/5' : 'bg-slate-50/50 border-slate-100 opacity-40'
+                    }`}>
+                      <span className={`text-[10px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                        {code === '0' ? 'SEDE' : code}
+                      </span>
+                      <span className={`text-lg font-black ${isActive ? 'text-slate-900' : 'text-slate-300'}`}>
+                        {count} <span className="text-[10px] font-bold">GG</span>
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Right Column (Causals Detail) */}
@@ -2396,7 +2602,7 @@ export default function FoglioPresenze({
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCigDash, setShowCigDash] = useState(false)
-  const [cigFasi, setCigFasi] = useState<{ cantiere_cod: string; fase_lavorativa: string }[]>(initialCigFasi || [])
+  const [cigFasi, setCigFasi] = useState<{ cantiere_cod: string; fase_lavorativa: string; ticket_inps?: string }[]>(initialCigFasi || [])
   const [savingFase, setSavingFase] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   
@@ -2443,7 +2649,7 @@ export default function FoglioPresenze({
           .reduce((acc, c) => acc + (c.ore || 0), 0)
         const workedOrd = Math.max(0, (g.ore_lavorate || 0) - totCausaliDay)
 
-        if (cigCausali.length === 0 || turno === '1') return
+        if (cigCausali.length === 0) return
 
         if (!map[turno]) map[turno] = { oreTotali: 0, oreLavorate: 0, orePerGiorno: {}, lavoratePerGiorno: {}, dipPerGiorno: {}, dipendenti: [] }
         const ct = map[turno]
@@ -2482,22 +2688,26 @@ export default function FoglioPresenze({
   })
   const cigValid = cantieriSenzaFase.length === 0
 
-  function getFaseLavorativa(cantiereCod: string): string {
-    return cigFasi.find(f => f.cantiere_cod === cantiereCod)?.fase_lavorativa || ''
+  function getCigData(cantiereCod: string) {
+    const found = cigFasi.find(f => f.cantiere_cod === cantiereCod)
+    return {
+      fase: found?.fase_lavorativa || '',
+      ticket: found?.ticket_inps || ''
+    }
   }
 
-  async function handleSaveFase(cantiereCod: string, fase: string) {
+  async function handleSaveFase(cantiereCod: string, fase: string, ticket: string) {
     setSavingFase(true)
     setLoading(true)
     try {
       const { saveCigFase } = await import('@/app/actions/cig')
-      await saveCigFase(foglioId, cantiereCod, fase)
+      await saveCigFase(foglioId, cantiereCod, fase, ticket)
       setCigFasi(prev => {
         const next = prev.filter(f => f.cantiere_cod !== cantiereCod)
-        return [...next, { cantiere_cod: cantiereCod, fase_lavorativa: fase }]
+        return [...next, { cantiere_cod: cantiereCod, fase_lavorativa: fase, ticket_inps: ticket }]
       })
     } catch (e: any) {
-      setError(`Errore salvataggio fase: ${e.message}`)
+      setError(`Errore salvataggio dati CIG: ${e.message}`)
     } finally {
       setSavingFase(false)
       setLoading(false)
@@ -2506,7 +2716,7 @@ export default function FoglioPresenze({
 
   function handleConfirm() {
     console.log("[handleConfirm] Richiesta conferma invio. foglioId:", foglioId)
-    if (isEdile && hasCig && !cigValid) {
+    if (hasCig && !cigValid) {
       const msg = `⚠️ Compilare la Fase Lavorativa per i cantieri: ${cantieriSenzaFase.join(', ')}. Apri la Dashboard CIG per completare.`
       setError(msg)
       return
@@ -2549,9 +2759,32 @@ export default function FoglioPresenze({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header info */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="flex flex-col h-screen bg-slate-50 print:bg-white print:h-auto">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+          body { background: white !important; margin: 0; padding: 0; }
+          @page { size: landscape; margin: 10mm; }
+          .print-container { 
+            width: 100% !important; 
+            max-width: none !important; 
+            padding: 0 !important; 
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          .overflow-x-auto { overflow: visible !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .bg-slate-50 { background-color: white !important; }
+        }
+      `}} />
+      {/* Header bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <div className="flex items-center gap-4">
            {onBack && (
              <button 
@@ -2572,7 +2805,29 @@ export default function FoglioPresenze({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 no-print">
+          {/* Export Buttons */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 border-r border-slate-100 transition-all"
+              title="Stampa / Salva PDF"
+            >
+              <Printer className="h-3.5 w-3.5 text-blue-500" />
+              <span className="hidden sm:inline">STAMPA PDF</span>
+            </button>
+            <button
+              onClick={() => exportToExcel(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+              title="Esporta in Excel"
+            >
+              <Download className="h-3.5 w-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">EXCEL</span>
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-slate-200 mx-1 hidden md:block" />
+
           {/* Status Badge */}
           <div className={`px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 ${
             status === 'confermato' || sent ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
@@ -2585,8 +2840,8 @@ export default function FoglioPresenze({
             {status === 'confermato' || sent ? 'Inviato' : status === 'chiuso' ? 'Chiuso' : 'Bozza'}
           </div>
 
-          {/* Dashboard CIG — solo edili, solo se ci sono ore CIG */}
-          {isEdile && hasCig && (
+          {/* Dashboard CIG — solo se ci sono ore CIG */}
+          {hasCig && (
             <button
               onClick={() => setShowCigDash(true)}
               className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all ${
@@ -2654,7 +2909,7 @@ export default function FoglioPresenze({
               className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors shadow-sm"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              Riapri Segnaore
+              Riapri
             </button>
           )}
 
@@ -2667,11 +2922,65 @@ export default function FoglioPresenze({
               className="flex items-center gap-2 rounded-xl bg-[#D32F2F] px-5 py-2 text-sm font-bold text-white hover:bg-[#b02727] disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-red-900/10 transition-all"
             >
               <Send className="h-4 w-4" />
-              {sending ? 'Invio...' : 'Conferma e Invia'}
+              {sending ? 'Invio...' : 'Conferma'}
             </button>
           )}
         </div>
       </div>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 print:overflow-visible print:p-0">
+        <div className="max-w-[1600px] mx-auto space-y-6 print:max-w-none print:m-0 print:space-y-4">
+          <div className="hidden print:flex bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:border-none print:shadow-none print:p-0">
+            <div className="flex items-center gap-4">
+              {onBack && (
+                <button 
+                  onClick={onBack}
+                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200 text-slate-500 no-print"
+                  title="Torna alla Dashboard"
+                >
+                  <ChevronDown className="h-5 w-5 rotate-90" />
+                </button>
+              )}
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">
+                  {azienda} {sede ? `— ${sede}` : ''}
+                </h2>
+                <p className="text-sm text-slate-500 font-medium">
+                  Periodo: <span className="text-slate-900 font-bold">{MESI[mese]} {anno}</span> &middot; {initialDipendenti.length} dipendenti
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className={`px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 ${
+                status === 'confermato' || sent ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                status === 'chiuso' ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                'bg-amber-50 text-amber-700 border-amber-100'
+              }`}>
+                {status === 'confermato' || sent ? <CheckCircle className="h-3.5 w-3.5" /> : 
+                 status === 'chiuso' ? <Lock className="h-3.5 w-3.5" /> :
+                 <Info className="h-3.5 w-3.5" />}
+                {status === 'confermato' || sent ? 'Inviato' : status === 'chiuso' ? 'Chiuso' : 'Bozza'}
+              </div>
+              
+              <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm no-print">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 border-r border-slate-100 transition-all"
+                >
+                  <Printer className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="hidden sm:inline">STAMPA</span>
+                </button>
+                <button
+                  onClick={() => exportToExcel(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  <Download className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="hidden sm:inline">EXCEL</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
       {/* Note per lo Studio (Collapsible Card) */}
       {showNote && (
@@ -2740,7 +3049,7 @@ export default function FoglioPresenze({
 
       {/* Legenda */}
       {showLegenda && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 no-print">
           <h3 className="text-sm font-bold text-amber-900 mb-2">Legenda Causali</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1">
             {elencoCausali.map(g => {
@@ -2796,7 +3105,7 @@ export default function FoglioPresenze({
       </div>
 
       {/* Desktop Version */}
-      <div className="hidden md:block space-y-6">
+      <div className="hidden md:block space-y-6 print:block">
         {initialDipendenti.map(dip => (
           <DipendenteSectionDesktop
             key={dip.id}
@@ -2817,7 +3126,7 @@ export default function FoglioPresenze({
       </div>
 
       {/* Mobile Version */}
-      <div className="block md:hidden">
+      <div className="block md:hidden print:hidden">
         {initialDipendenti.filter(d => d.id === selectedDipMobile).map(dip => (
           <DipendenteSectionMobile
             key={dip.id}
@@ -2836,10 +3145,12 @@ export default function FoglioPresenze({
           />
         ))}
       </div>
+      </div>
+      </div>
 
       {/* CIG Dashboard Modal */}
       {showCigDash && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm no-print">
         <div className="w-full max-w-6xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -2857,20 +3168,25 @@ export default function FoglioPresenze({
               {Object.entries(cigByCantiere).length === 0 && (
                 <p className="text-sm text-slate-400 text-center py-6">Nessuna ora CIG registrata in questo mese.</p>
               )}
-              {Object.entries(cigByCantiere).map(([cantiereCod, data]) => (
-                <CigCantiereCard
-                  key={cantiereCod}
-                  cantiereCod={cantiereCod}
-                  data={data}
-                  faseSalvata={getFaseLavorativa(cantiereCod)}
-                  cantiereInfo={cantieri.find(c => (c.cod || c.cantiere) === cantiereCod)}
-                  onSave={handleSaveFase}
-                  savingFase={savingFase}
-                  daysInMonth={daysInMonth}
-                  anno={anno}
-                  mese={mese}
-                />
-              ))}
+              {Object.entries(cigByCantiere).map(([cantiereCod, data]) => {
+                const cigData = getCigData(cantiereCod)
+                return (
+                  <CigCantiereCard
+                    key={cantiereCod}
+                    cantiereCod={cantiereCod}
+                    data={data}
+                    faseSalvata={cigData.fase}
+                    ticketSalvato={cigData.ticket}
+                    cantiereInfo={cantieri.find(c => (c.cod || c.cantiere) === cantiereCod)}
+                    onSave={handleSaveFase}
+                    savingFase={savingFase}
+                    daysInMonth={daysInMonth}
+                    anno={anno}
+                    mese={mese}
+                    isAdmin={isAdmin}
+                  />
+                )
+              })}
             </div>
 
             {/* Modal footer */}
@@ -2932,6 +3248,7 @@ export default function FoglioPresenze({
           anno={anno}
           mese={mese}
           isEdile={isEdile}
+          cantieri={cantieri}
           onClose={() => setActiveCell(null)}
         />
       )}

@@ -79,7 +79,6 @@ export default function CreateClientForm() {
             />
           </div>
 
-          {/* AddressPicker Ibrido */}
           <AddressPicker 
             type="sede"
             label="Sede Legale / Principale"
@@ -94,9 +93,6 @@ export default function CreateClientForm() {
           <input type="hidden" name="comune" value={address.comune} />
           <input type="hidden" name="provincia" value={address.provincia} />
           <input type="hidden" name="cap" value={address.cap} />
-          <input type="hidden" name="lat" value={(address as any).lat || ''} />
-          <input type="hidden" name="lon" value={(address as any).lon || ''} />
-          <input type="hidden" name="is_verified" value={(address as any).is_verified ? 'true' : 'false'} />
           
           {/* Manteniamo compatibilità con il vecchio campo 'indirizzo' se la Server Action lo usa ancora */}
           <input type="hidden" name="indirizzo" value={`${address.via} ${address.civico}`} />

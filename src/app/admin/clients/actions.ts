@@ -57,10 +57,7 @@ export async function createClientAccount(formData: FormData) {
       comune,
       indirizzo,
       is_edile: isEdile,
-      lettera_identificativa: letteraIdentificativa,
-      lat: formData.get('lat') ? parseFloat(formData.get('lat') as string) : null,
-      lon: formData.get('lon') ? parseFloat(formData.get('lon') as string) : null,
-      is_verified: formData.get('is_verified') === 'true'
+      lettera_identificativa: letteraIdentificativa
     })
 
   if (profileError) {
@@ -99,13 +96,6 @@ export async function updateClientProfile(userId: string, formData: FormData) {
   const isEdile = formData.get('is_edile') === 'true'
   const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
 
-  console.log('--- DEBUG updateClientProfile ---')
-  console.log('userId:', userId)
-  console.log('lat raw:', formData.get('lat'))
-  console.log('lon raw:', formData.get('lon'))
-  console.log('is_verified raw:', formData.get('is_verified'))
-  console.log('cap raw:', cap)
-
   const { error } = await admin
     .from('profiles')
     .update({
@@ -119,9 +109,6 @@ export async function updateClientProfile(userId: string, formData: FormData) {
       civico,
       is_edile: isEdile,
       lettera_identificativa: letteraIdentificativa,
-      lat: formData.get('lat') && formData.get('lat') !== '' ? parseFloat(formData.get('lat') as string) : null,
-      lon: formData.get('lon') && formData.get('lon') !== '' ? parseFloat(formData.get('lon') as string) : null,
-      is_verified: formData.get('is_verified') === 'true',
       updated_at: new Date().toISOString()
     })
     .eq('id', userId)
@@ -158,9 +145,6 @@ export async function updateClientSede(userId: string, formData: FormData) {
       civico,
       is_edile: isEdile,
       lettera_identificativa: letteraIdentificativa,
-      lat: formData.get('lat') && formData.get('lat') !== '' ? parseFloat(formData.get('lat') as string) : null,
-      lon: formData.get('lon') && formData.get('lon') !== '' ? parseFloat(formData.get('lon') as string) : null,
-      is_verified: formData.get('is_verified') === 'true',
       updated_at: new Date().toISOString()
     })
     .eq('id', userId)
@@ -186,10 +170,7 @@ export async function addAdditionalSede(clientId: string, formData: FormData) {
     comune: formData.get('comune') as string,
     indirizzo: formData.get('indirizzo') as string,
     cap: formData.get('cap') as string,
-    civico: formData.get('civico') as string,
-    lat: formData.get('lat') ? parseFloat(formData.get('lat') as string) : null,
-    lon: formData.get('lon') ? parseFloat(formData.get('lon') as string) : null,
-    is_verified: formData.get('is_verified') === 'true',
+    civico: formData.get('civico') as string
   }
 
   const { error } = await admin

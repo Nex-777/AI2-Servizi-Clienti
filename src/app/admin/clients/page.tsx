@@ -133,7 +133,7 @@ export default async function AdminClientsPage() {
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-[#D32F2F] hover:bg-red-50 rounded-lg transition-all border border-slate-200 hover:border-[#D32F2F]/30"
                                 title="Gestisci Cantieri"
                               >
-                                <Construction className="h-3.5 w-3.5" />
+                                <span className="text-[10px] font-black mr-0.5">P—</span>
                                 Cantieri
                               </Link>
                             )}

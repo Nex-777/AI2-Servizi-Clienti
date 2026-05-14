@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@/utils/supabase/client'
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -49,6 +50,7 @@ function NuovoCantiereAppaltatoreContent() {
   const [step, setStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [userProfile, setUserProfile] = useState<{ sede_comune: string; sede_provincia: string } | null>(null)
 
   // Form State
   const [formData, setFormData] = useState<SubmitDNLPayload>({
@@ -65,7 +67,6 @@ function NuovoCantiereAppaltatoreContent() {
       comune: '',
       provincia: '',
       cup: '',
-      is_verified: false
     },
     cantiere: {
       via: '',
@@ -85,12 +86,30 @@ function NuovoCantiereAppaltatoreContent() {
       n_imprese: '0',
       n_operai: '0',
       nota: '',
-      lat: null,
-      lon: null,
-      is_verified: false
+      distanza_km: null
     },
     subappaltatori: []
   })
+
+  // Fetch profile to get sede_comune
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('sede_comune, sede_provincia')
+        .eq('id', clientId || user.id)
+        .single()
+      
+      if (profile) {
+        setUserProfile(profile)
+      }
+    }
+    fetchProfile()
+  }, [clientId])
 
   const nextStep = () => setStep(s => Math.min(s + 1, 3))
   const prevStep = () => setStep(s => Math.max(s - 1, 0))
@@ -294,8 +313,7 @@ function NuovoCantiereAppaltatoreContent() {
                       civico: formData.committente.civico,
                       comune: formData.committente.comune,
                       provincia: formData.committente.provincia,
-                      cap: formData.committente.cap,
-                      is_verified: formData.committente.is_verified
+                      cap: formData.committente.cap
                     }}
                     showCalculationWarning={false}
                     onChange={(fields) => setFormData(prev => ({ 
@@ -314,13 +332,15 @@ function NuovoCantiereAppaltatoreContent() {
                       <AddressPicker 
                         type="cantiere"
                         label="Ubicazione Cantiere"
+                        sedeComune={userProfile?.sede_comune}
+                        sedeProvincia={userProfile?.sede_provincia}
                         value={{
                           via: formData.cantiere.via,
                           civico: formData.cantiere.civico,
                           comune: formData.cantiere.comune,
                           provincia: formData.cantiere.prov,
                           cap: formData.cantiere.cap,
-                          is_verified: formData.cantiere.is_verified
+                          distanza_km: formData.cantiere.distanza_km
                         }}
                         onChange={(fields) => {
                           setFormData(prev => {

@@ -4,6 +4,10 @@ import { Calendar, Clock, Lock, FileEdit, Eye, ChevronRight, LayoutDashboard, Se
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { addCantiere, updateCantiere } from '@/app/admin/clients/[id]/cantieri/actions'
+import { UserPlus, Loader2, AlertTriangle, CheckCircle } from 'lucide-react'
+import { addIntegrationSubappalto } from '@/app/actions/addIntegrationSubappalto'
+import { SubappaltatoreData } from '@/app/actions/submitDNL'
+import { AddressPicker } from '@/components/common/AddressPicker'
 
 interface FoglioSummary {
   id: string
@@ -35,7 +39,33 @@ export default function Dashboard({
 }) {
   const [activeModal, setActiveModal] = useState<'sede' | 'cantiere' | null>(null)
   const [viewingCantiere, setViewingCantiere] = useState<any | null>(null)
+  const [addingSubForCantiere, setAddingSubForCantiere] = useState<any | null>(null)
   const [subs, setSubs] = useState<any[]>([])
+  const [isSubmittingIntegration, setIsSubmittingIntegration] = useState(false)
+  const [integrationError, setIntegrationError] = useState<string | null>(null)
+
+  // Quick Sub Form State
+  const [newSub, setNewSub] = useState<SubappaltatoreData>({
+    ragione_sociale: '',
+    codice_fiscale: '',
+    partita_iva: '',
+    via: '',
+    civico: '',
+    cap: '',
+    comune: '',
+    provincia: '',
+    telefono: '',
+    email: '',
+    tipo_edile: 'edile',
+    numero_iscrizione_ce: '',
+    tipo_lavoro: 'Subappalto',
+    attivita_svolta: '',
+    data_inizio_presunta: '',
+    data_fine_presunta: '',
+    descrizione_lavori: '',
+    importo_edile: '',
+    lavoratore_autonomo: false
+  })
   
   useEffect(() => {
     if (viewingCantiere?.id) {
@@ -62,6 +92,59 @@ export default function Dashboard({
   }, {} as Record<number, FoglioSummary[]>)
 
   const sortedYears = Object.keys(fogliByYear).map(Number).sort((a, b) => b - a)
+
+  const handleAddSub = async () => {
+    if (!addingSubForCantiere) return
+    setIsSubmittingIntegration(true)
+    setIntegrationError(null)
+    try {
+      const res = await addIntegrationSubappalto({
+        parentCantiereId: addingSubForCantiere.id,
+        subData: newSub
+      })
+      if (res.success) {
+        setAddingSubForCantiere(null)
+        // Reset form
+        setNewSub({
+          ragione_sociale: '',
+          codice_fiscale: '',
+          partita_iva: '',
+          via: '',
+          civico: '',
+          cap: '',
+          comune: '',
+          provincia: '',
+          telefono: '',
+          email: '',
+          tipo_edile: 'edile',
+          numero_iscrizione_ce: '',
+          tipo_lavoro: 'Subappalto',
+          attivita_svolta: '',
+          data_inizio_presunta: '',
+          data_fine_presunta: '',
+          descrizione_lavori: '',
+          importo_edile: '',
+          lavoratore_autonomo: false
+        })
+        // Refresh cantiere details if viewing the same one
+        if (viewingCantiere?.id === addingSubForCantiere.id) {
+          const { createClient } = await import('@/utils/supabase/client')
+          const supabase = createClient()
+          const { data } = await supabase
+            .from('subappaltatori_cantiere')
+            .select('*')
+            .eq('cantiere_id', viewingCantiere.id)
+          setSubs(data || [])
+        }
+      } else {
+        setIntegrationError(res.error || 'Errore durante il salvataggio')
+      }
+    } catch (e: any) {
+      setIntegrationError(e.message)
+    } finally {
+      setIsSubmittingIntegration(false)
+    }
+  }
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -264,12 +347,12 @@ export default function Dashboard({
 
       {/* Modals */}
       {activeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
             <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#D32F2F] rounded-xl text-white">
-                  {activeModal === 'sede' ? <Building2 className="h-6 w-6" /> : <Construction className="h-6 w-6" />}
+                <div className="w-12 h-12 flex items-center justify-center bg-[#D32F2F] rounded-xl text-white font-black text-xl">
+                  {activeModal === 'sede' ? <Building2 className="h-6 w-6" /> : 'P—'}
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">
@@ -348,8 +431,8 @@ export default function Dashboard({
                           href={isAdmin ? `/cantieri/nuovo-appaltatore?clientId=${profile?.id}` : "/cantieri/nuovo-appaltatore"}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-[#D32F2F] text-white rounded-xl text-xs font-bold hover:bg-[#b02727] transition-all shadow-lg shadow-red-900/10 group"
                         >
-                          <Construction className="h-3.5 w-3.5" />
-                          NUOVO CANTIERE (APPALTATORE)
+                          <span className="text-[10px] font-black mr-0.5">P—</span>
+                          CANTIERE (APPALTATORE)
                           <ArrowUpRight className="h-3 w-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                         </Link>
                         <Link 
@@ -421,7 +504,7 @@ export default function Dashboard({
                                      <div className="flex items-center gap-2 mt-2 py-1.5 px-3 bg-indigo-50 border border-indigo-100 rounded-xl">
                                        <Calculator className="h-3.5 w-3.5 text-indigo-600" />
                                        <span className="text-[11px] font-bold text-indigo-700">
-                                         Distanza Sede: {viewingCantiere.distanza_km.toFixed(1)} km
+                                         Distanza Sede: {viewingCantiere.distanza_km}
                                        </span>
                                      </div>
                                    )}
@@ -524,10 +607,13 @@ export default function Dashboard({
                             <th className="px-8 py-4 text-right">Azioni</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {cantieri?.map((c) => (
-                            <tr key={c.id} className="hover:bg-slate-50/50 transition-colors group/tr">
-                              <td className="px-8 py-5">
+                        <tbody className="divide-y divide-slate-200">
+                          {cantieri?.sort((a, b) => {
+                            if (a.is_archived !== b.is_archived) return a.is_archived ? 1 : -1
+                            return (b.cod || '').localeCompare(a.cod || '', undefined, { numeric: true, sensitivity: 'base' })
+                          }).map((c, idx) => (
+                            <tr key={c.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-slate-100/50 transition-colors group/tr border-b border-slate-200 last:border-none ${c.is_archived ? 'opacity-50 grayscale' : ''}`}>
+                              <td className="px-8 py-6">
                                 <div className="font-bold text-slate-900">{c.cod || '—'}</div>
                               </td>
                               <td className="px-4 py-5">
@@ -542,7 +628,7 @@ export default function Dashboard({
                                 {c.distanza_km && (
                                   <div className="mt-2 flex items-center gap-1.5 text-[#D32F2F] font-bold text-[10px]">
                                     <Calculator className="h-3 w-3" />
-                                    {c.distanza_km.toFixed(1)} km
+                                    {c.distanza_km}
                                   </div>
                                 )}
                               </td>
@@ -569,14 +655,26 @@ export default function Dashboard({
                                 </div>
                               </td>
                               <td className="px-8 py-5 text-right">
-                                <button 
-                                  onClick={() => setViewingCantiere(c)}
-                                  className="p-2.5 text-slate-300 hover:text-[#D32F2F] hover:bg-red-50 rounded-xl transition-all shadow-sm hover:shadow-md bg-white border border-slate-100 flex items-center gap-2"
-                                  title="Dettagli Cantiere"
-                                >
-                                  <Eye className="h-5 w-5" />
-                                  <span className="text-[10px] font-bold uppercase">Apri</span>
-                                </button>
+                                <div className="flex justify-end gap-2">
+                                  {c.appalto_subappalto === 'Appalto' && (
+                                    <button 
+                                      onClick={() => setAddingSubForCantiere(c)}
+                                      className="p-2.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all shadow-sm hover:shadow-md bg-white border border-emerald-100 flex items-center gap-2"
+                                      title="Aggiungi Subappaltatore"
+                                    >
+                                      <UserPlus className="h-4 w-4" />
+                                      <span className="text-[10px] font-black uppercase">Sub</span>
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => setViewingCantiere(c)}
+                                    className="p-2.5 text-slate-400 hover:text-[#D32F2F] hover:bg-red-50 rounded-xl transition-all shadow-sm hover:shadow-md bg-white border border-slate-100 flex items-center gap-2"
+                                    title="Dettagli Cantiere"
+                                  >
+                                    <Eye className="h-5 w-5" />
+                                    <span className="text-[10px] font-bold uppercase">Apri</span>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -605,6 +703,176 @@ export default function Dashboard({
                 className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
               >
                 Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Quick Add Sub Modal */}
+      {addingSubForCantiere && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-emerald-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
+                  <UserPlus className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Integrazione Subappalto</h3>
+                  <p className="text-sm text-emerald-700 font-medium">Aggiungi un'impresa a: {addingSubForCantiere.cantiere}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setAddingSubForCantiere(null)}
+                className="p-2 hover:bg-emerald-100 rounded-full transition-colors text-emerald-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 space-y-8">
+              {integrationError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex gap-3 items-center text-red-800">
+                  <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                  <p className="text-sm font-semibold">{integrationError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Dati Impresa */}
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => setNewSub({ ...newSub, tipo_edile: 'edile' })}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${
+                        newSub.tipo_edile === 'edile' ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >EDILE</button>
+                    <button 
+                      onClick={() => setNewSub({ ...newSub, tipo_edile: 'non_edile' })}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${
+                        newSub.tipo_edile === 'non_edile' ? 'bg-slate-600 border-slate-600 text-white shadow-lg shadow-slate-600/20' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >NON EDILE</button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Ragione Sociale *</label>
+                    <input 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm font-bold uppercase"
+                      value={newSub.ragione_sociale}
+                      onChange={(e) => setNewSub({ ...newSub, ragione_sociale: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Codice Fiscale *</label>
+                      <input 
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm font-mono uppercase"
+                        value={newSub.codice_fiscale}
+                        onChange={(e) => setNewSub({ ...newSub, codice_fiscale: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Partita IVA</label>
+                      <input 
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm font-mono"
+                        value={newSub.partita_iva}
+                        onChange={(e) => setNewSub({ ...newSub, partita_iva: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  {newSub.tipo_edile === 'edile' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-[#D32F2F] ml-1">N° Iscrizione Cassa Edile *</label>
+                      <input 
+                        className="w-full px-4 py-3 rounded-xl border border-[#D32F2F]/20 bg-red-50/10 focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all text-sm font-bold"
+                        value={newSub.numero_iscrizione_ce}
+                        onChange={(e) => setNewSub({ ...newSub, numero_iscrizione_ce: e.target.value })}
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Telefono</label>
+                      <input className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none text-sm" value={newSub.telefono} onChange={(e)=>setNewSub({...newSub, telefono: e.target.value})}/>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Email</label>
+                      <input className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none text-sm" value={newSub.email} onChange={(e)=>setNewSub({...newSub, email: e.target.value})}/>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Indirizzo e Periodo */}
+                <div className="space-y-6">
+                   <AddressPicker 
+                    type="committente"
+                    label="Sede Subappaltatore"
+                    value={{
+                      via: newSub.via,
+                      civico: newSub.civico,
+                      comune: newSub.comune,
+                      provincia: newSub.provincia,
+                      cap: newSub.cap
+                    }}
+                    onChange={(fields) => setNewSub({ ...newSub, ...fields })}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Data Inizio *</label>
+                      <input type="date" className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none text-sm" value={newSub.data_inizio_presunta} onChange={(e)=>setNewSub({...newSub, data_inizio_presunta: e.target.value})}/>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Data Fine *</label>
+                      <input type="date" className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none text-sm" value={newSub.data_fine_presunta} onChange={(e)=>setNewSub({...newSub, data_fine_presunta: e.target.value})}/>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-tighter text-slate-400 ml-1">Descrizione Lavori *</label>
+                    <textarea 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none h-20 text-sm resize-none"
+                      value={newSub.descrizione_lavori}
+                      onChange={(e) => setNewSub({ ...newSub, descrizione_lavori: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Importo Edile (€) *</span>
+                    <input 
+                      className="w-32 text-right font-black text-lg bg-white border border-slate-200 px-3 py-1 rounded-xl outline-none focus:border-emerald-500"
+                      placeholder="0,00"
+                      value={newSub.importo_edile}
+                      onChange={(e) => setNewSub({ ...newSub, importo_edile: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
+              <button 
+                onClick={() => setAddingSubForCantiere(null)}
+                className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-900 transition-colors"
+              >
+                ANNULLA
+              </button>
+              <button 
+                onClick={handleAddSub}
+                disabled={isSubmittingIntegration}
+                className="flex items-center gap-3 px-10 py-3.5 bg-emerald-600 text-white rounded-2xl text-base font-black hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-900/20 disabled:bg-slate-400"
+              >
+                {isSubmittingIntegration ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-5 w-5" />
+                )}
+                SALVA E INVIA NOTIFICA
               </button>
             </div>
           </div>

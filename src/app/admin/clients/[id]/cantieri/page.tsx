@@ -41,7 +41,7 @@ export default async function AdminClientCantieriPage({
   // Fetch cantieri
   const { data: cantieri } = await admin
     .from('cantieri')
-    .select('*')
+    .select('*, subappaltatori_cantiere(count)')
     .eq('client_id', id)
     .order('created_at', { ascending: false })
 

@@ -46,7 +46,7 @@ export default async function DashboardPage({
     // Fetch all submitted fogli (status != 'bozza')
     const { data: adminFogli } = await admin
       .from('fogli_presenza')
-      .select('id, client_id, azienda, anno, mese, status, admin_status, uploaded_at, note, profiles!fogli_presenza_client_id_fkey(email, ragione_sociale), dipendenti(count)')
+      .select('id, client_id, azienda, anno, mese, status, admin_status, uploaded_at, note, checkpoints, profiles!fogli_presenza_client_id_fkey(email, ragione_sociale), dipendenti(count)')
       .neq('status', 'bozza')
       .order('anno', { ascending: false })
       .order('mese', { ascending: false })
@@ -54,7 +54,7 @@ export default async function DashboardPage({
     return (
       <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans">
         <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-8">
-          <header className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-6 gap-4">
+          <header className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-4 gap-4">
             <div className="flex items-center gap-4">
               <img src="/logo.jpg" alt="AI2 Logo" className="h-12 w-auto object-contain" />
               <div>
@@ -77,31 +77,33 @@ export default async function DashboardPage({
             </div>
           </header>
 
-          <main className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-             <div className="group rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-[#D32F2F]/50 hover:shadow-lg">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-[#D32F2F]"><UploadCloud className="h-6 w-6" /></div>
-                <h2 className="text-xl font-bold mb-2 text-slate-900">Caricamento CSV</h2>
-                <p className="text-sm text-slate-500 mb-6">Carica i file CSV per aggiornare i dati GIS.</p>
-                <Link href="/admin/upload" className="w-full inline-flex justify-center rounded-lg bg-[#D32F2F] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#b02727] transition-colors">Carica CSV</Link>
-             </div>
-             <div className="group rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-emerald-500/50 hover:shadow-lg">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><Users className="h-6 w-6" /></div>
-                <h2 className="text-xl font-bold mb-2 text-slate-900">Anagrafica Clienti</h2>
-                <p className="text-sm text-slate-500 mb-6">Gestisci i clienti e le autorizzazioni.</p>
-                <Link href="/admin/clients" className="w-full inline-flex justify-center rounded-lg border border-slate-300 bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Apri Gestione</Link>
-             </div>
-             <div className="group rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-amber-500/50 hover:shadow-lg">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Settings className="h-6 w-6" /></div>
-                <h2 className="text-xl font-bold mb-2 text-slate-900">Configurazione</h2>
-                <p className="text-sm text-slate-500 mb-6">Definisci le regole di associazione CSV.</p>
-                <button className="w-full rounded-lg border border-slate-300 bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Impostazioni</button>
-             </div>
-           </main>
-           
-           {/* Sezione Lista Segnaore Inviati */}
-           {adminFogli && adminFogli.length > 0 && (
-             <AdminFogliList fogli={adminFogli as any[]} />
-           )}
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <Link href="/admin/upload" className="group flex items-center gap-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:border-[#D32F2F]/50 hover:shadow-md transition-all">
+              <div className="p-2 bg-red-50 text-[#D32F2F] rounded-lg group-hover:bg-[#D32F2F] group-hover:text-white transition-colors">
+                <UploadCloud className="h-4 w-4" />
+              </div>
+              <span className="text-sm font-bold text-slate-700">Carica CSV</span>
+            </Link>
+            
+            <Link href="/admin/clients" className="group flex items-center gap-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-500/50 hover:shadow-md transition-all">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <Users className="h-4 w-4" />
+              </div>
+              <span className="text-sm font-bold text-slate-700">Anagrafica Clienti</span>
+            </Link>
+
+            <button className="group flex items-center gap-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm hover:border-amber-500/50 hover:shadow-md transition-all">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                <Settings className="h-4 w-4" />
+              </div>
+              <span className="text-sm font-bold text-slate-700">Impostazioni</span>
+            </button>
+          </div>
+            
+          {/* Sezione Lista Segnaore Inviati */}
+          {adminFogli && adminFogli.length > 0 && (
+            <AdminFogliList fogli={adminFogli as any[]} />
+          )}
         </div>
       </div>
     )
