@@ -185,8 +185,8 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
-// Calcolo festività nazionali italiane
-function isFestivo(anno: number, mese: number, giorno: number) {
+// Calcolo festività nazionali italiane + Santo Patrono
+function isFestivo(anno: number, mese: number, giorno: number, patrono?: string | null) {
   const festiviFissi = [
     { m: 1, d: 1 },   // Capodanno
     { m: 1, d: 6 },   // Epifania
@@ -203,6 +203,12 @@ function isFestivo(anno: number, mese: number, giorno: number) {
 
   const isFisso = festiviFissi.some(f => f.m === mese && f.d === giorno)
   if (isFisso) return true
+
+  // Verifica Santo Patrono (formato DD-MM)
+  if (patrono && patrono.includes('-')) {
+    const [pGiorno, pMese] = patrono.split('-').map(Number)
+    if (mese === pMese && giorno === pGiorno) return true
+  }
 
   // Calcolo Pasqua (Algoritmo di Meeus/Jones/Butcher)
   const a = anno % 19
@@ -684,15 +690,30 @@ function SedeCell({
   // Options for dropdown
   const options = (cantieri || []).length > 0 
     ? validCantieri.map(c => {
-        const identifier = c.cod || c.causal
+        const identifier = (c.cod || c.causal || '').toUpperCase()
+        const indirizzo = (c.cantiere || '').toUpperCase()
+        const civico = c.civico ? ` ${c.civico.toUpperCase()}` : ''
+        const prov = c.prov ? ` ${c.prov.toUpperCase()}` : ''
+        const committente = (c.committente || '').toUpperCase()
+        
+        const label = identifier 
+          ? `${identifier} - ${indirizzo}${civico}${prov} - ${committente}`
+          : `${indirizzo}${civico}${prov} - ${committente}`
+
         return { 
-          value: identifier || c.cantiere, 
-          label: identifier ? identifier.toUpperCase() : (c.cantiere || '').toUpperCase()
+          value: c.cod || c.causal || c.cantiere, 
+          label: label.trim()
         }
       })
     : [
-        { value: profile?.numero_sede || '1', label: `Sede ${profile?.numero_sede || '1'}` },
-        ...(additionalSedi || []).map(s => ({ value: s.numero, label: `Sede ${s.numero}` }))
+        { 
+          value: profile?.numero_sede || '1', 
+          label: `${profile?.numero_sede || '1'} - ${(profile?.indirizzo || '').toUpperCase()}${profile?.civico ? ' ' + profile.civico.toUpperCase() : ''} ${(profile?.provincia || '').toUpperCase()}`.trim()
+        },
+        ...(additionalSedi || []).map(s => ({ 
+          value: s.numero, 
+          label: `${s.numero} - ${(s.indirizzo || '').toUpperCase()}${s.civico ? ' ' + s.civico.toUpperCase() : ''} ${(s.provincia || '').toUpperCase()}`.trim()
+        }))
       ]
 
   const isOptimistic = optimisticValore !== null && saving
@@ -1276,7 +1297,7 @@ function CausaleCell({
 
 
 function DipendenteSectionDesktop({ 
-  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 
+  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, dataSantoPatrono, isAdmin = false 
 }: { 
   dip: Dipendente, 
   daysInMonth: number, 
@@ -1289,6 +1310,7 @@ function DipendenteSectionDesktop({
   isEdile: boolean,
   anno: number,
   mese: number,
+  dataSantoPatrono?: string | null,
   isAdmin?: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -1476,7 +1498,7 @@ function DipendenteSectionDesktop({
                 {days.map(d => {
                   const date = new Date(anno, mese - 1, d)
                   const isDomenica = date.getDay() === 0
-                  const isF = isFestivo(anno, mese, d)
+                  const isF = isFestivo(anno, mese, d, dataSantoPatrono)
                   const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
                   
                   // Colore testo: Rosso se domenica, Giallo (Stitch Yellow-400) se festivo feriale, Bianco altrimenti
@@ -1885,6 +1907,7 @@ function CigCantiereCard({
   daysInMonth,
   anno,
   mese,
+  dataSantoPatrono: patronoProp,
   isAdmin = false
 }: {
   cantiereCod: string
@@ -1904,6 +1927,7 @@ function CigCantiereCard({
   daysInMonth: number
   anno: number
   mese: number
+  dataSantoPatrono?: string | null
   isAdmin?: boolean
 }) {
   const [localFase, setLocalFase] = useState(faseSalvata)
@@ -1958,7 +1982,7 @@ function CigCantiereCard({
               {days.map(d => {
                 const date = new Date(anno, mese - 1, d)
                 const isDomenica = date.getDay() === 0
-                const isF = isFestivo(anno, mese, d)
+                const isF = isFestivo(anno, mese, d, patronoProp)
                 const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
                 let cellClass = activeDays.has(d) ? 'bg-yellow-100 text-yellow-800' : 'text-slate-400'
                 if (isDomenica) cellClass = 'bg-red-50 text-red-600'
@@ -2047,7 +2071,7 @@ function CigCantiereCard({
   )
 }
 function DipendenteSectionMobile({
-  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, isAdmin = false 
+  dip, daysInMonth, foglioStatus, activeCell, onToggleCell, cantieri, additionalSedi, profile, isEdile, anno, mese, dataSantoPatrono, isAdmin = false 
 }: { 
   dip: Dipendente, 
   daysInMonth: number, 
@@ -2060,6 +2084,7 @@ function DipendenteSectionMobile({
   isEdile: boolean,
   anno: number,
   mese: number,
+  dataSantoPatrono?: string | null,
   isAdmin?: boolean
 }) {
   const [causali, setCausali] = useState(dip.causali)
@@ -2209,7 +2234,7 @@ function DipendenteSectionMobile({
             {days.map(d => {
               const date = new Date(anno, mese - 1, d)
               const isDomenica = date.getDay() === 0
-              const isF = isFestivo(anno, mese, d)
+              const isF = isFestivo(anno, mese, d, dataSantoPatrono)
               const dayName = date.toLocaleDateString('it-IT', { weekday: 'short' }).toUpperCase().substring(0, 2)
               const giornata = getGiornata(d)
               const lavorateNum = Number(giornata?.ore_lavorate || 0)
@@ -2613,6 +2638,18 @@ export default function FoglioPresenze({
 
   const daysInMonth = getDaysInMonth(anno, mese)
   const isConfermato = (readOnly || status === 'confermato' || status === 'chiuso') && !isAdmin
+  
+  // Calcolo Santo Patrono per questa specifica sede/foglio
+  const dataSantoPatrono = (() => {
+    // Se la sede del foglio è nulla o coincide con la principale (numero_sede nel profilo)
+    if (!sede || sede === profile?.numero_sede || (sede === '1' && !profile?.numero_sede)) {
+      return profile?.data_santo_patrono
+    }
+    // Altrimenti cerchiamo nelle sedi addizionali (numero in sedi)
+    const foundSede = additionalSedi?.find(s => s.numero === sede)
+    return foundSede?.data_santo_patrono || profile?.data_santo_patrono
+  })()
+
   const isEdile = !!(profile?.is_edile)
   const elencoCausali = getElencoCausali(isEdile)
 
@@ -3120,6 +3157,7 @@ export default function FoglioPresenze({
             isEdile={isEdile}
             anno={anno}
             mese={mese}
+            dataSantoPatrono={dataSantoPatrono}
             isAdmin={isAdmin}
           />
         ))}
@@ -3141,6 +3179,7 @@ export default function FoglioPresenze({
             isEdile={isEdile}
             anno={anno}
             mese={mese}
+            dataSantoPatrono={dataSantoPatrono}
             isAdmin={isAdmin}
           />
         ))}
@@ -3183,6 +3222,7 @@ export default function FoglioPresenze({
                     daysInMonth={daysInMonth}
                     anno={anno}
                     mese={mese}
+                    dataSantoPatrono={dataSantoPatrono}
                     isAdmin={isAdmin}
                   />
                 )

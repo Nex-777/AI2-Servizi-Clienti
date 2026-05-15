@@ -1,10 +1,14 @@
 # AI2 - Servizi Clienti | Project Wiki
 
 ## Stato del Progetto
-Versione Attuale: **v1.0.46**
-Ultimo Aggiornamento: 14/05/2026
+Versione Attuale: **v1.0.47**
+Ultimo Aggiornamento: 15/05/2026
 
 ## Progressi Raggiunti
+- [x] **Gestione Santo Patrono**: Implementata logica per il riconoscimento automatico del Santo Patrono basata sulla sede del foglio presenze.
+- [x] **Dropdown Cantiere Avanzato**: Migliorata la leggibilità del selettore cantiere/sede, ora con dettagli completi su indirizzo e committente.
+- [x] **Gestione Sedi Addizionali**: Nuova interfaccia per la creazione e modifica di sedi secondarie con supporto a coordinate geografiche e date patrono specifiche.
+- [x] **Correzione Formato Date**: Normalizzato il formato delle date patrono a `DD-MM` per coerenza con gli standard locali.
 - [x] **Riepilogo Trasferte KM**: Integrato calcolo automatico dei giorni di trasferta suddivisi per fasce chilometriche (Sede, 10km, 20km, 30km, >30km).
 - [x] **Esportazione Excel**: Aggiunta funzionalità di download riepilogo in formato `.xlsx` per elaborazione esterna (GIS/Paghe).
 - [x] **Stampa PDF Professionale**: Implementato layout di stampa ottimizzato (A4 Landscape) che nasconde gli elementi di navigazione e formatta correttamente le tabelle per l'archiviazione cartacea.

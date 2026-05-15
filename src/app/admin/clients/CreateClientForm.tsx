@@ -116,6 +116,15 @@ export default function CreateClientForm() {
               placeholder="Lascia vuoto se non edile"
             />
           </div>
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-slate-500 mb-1 uppercase">Data Santo Patrono (DD-MM)</label>
+            <input 
+              name="data_santo_patrono" 
+              type="text" 
+              className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#D32F2F] outline-none"
+              placeholder="Es. 05-08 (Opzionale)"
+            />
+          </div>
         </div>
 
         <button 

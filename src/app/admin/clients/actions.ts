@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/utils/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { getPatronoByComune } from '@/utils/patroni'
 
 export async function createClientAccount(formData: FormData) {
   const admin = createAdminClient()
@@ -15,7 +16,7 @@ export async function createClientAccount(formData: FormData) {
   const indirizzo = formData.get('indirizzo') as string
   const isEdile = formData.get('is_edile') === 'true'
   const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
-  
+  const dataSantoPatrono = (formData.get('data_santo_patrono') as string) || getPatronoByComune(comune)
   const email = `${codice1.toLowerCase().trim()}@gis-internal.com`
 
   // 1. Create or Get user in Auth
@@ -57,7 +58,8 @@ export async function createClientAccount(formData: FormData) {
       comune,
       indirizzo,
       is_edile: isEdile,
-      lettera_identificativa: letteraIdentificativa
+      lettera_identificativa: letteraIdentificativa,
+      data_santo_patrono: dataSantoPatrono
     })
 
   if (profileError) {
@@ -95,6 +97,7 @@ export async function updateClientProfile(userId: string, formData: FormData) {
   const civico = formData.get('civico') as string
   const isEdile = formData.get('is_edile') === 'true'
   const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
+  const dataSantoPatrono = (formData.get('data_santo_patrono') as string)
 
   const { error } = await admin
     .from('profiles')
@@ -109,6 +112,7 @@ export async function updateClientProfile(userId: string, formData: FormData) {
       civico,
       is_edile: isEdile,
       lettera_identificativa: letteraIdentificativa,
+      data_santo_patrono: dataSantoPatrono,
       updated_at: new Date().toISOString()
     })
     .eq('id', userId)
@@ -122,17 +126,14 @@ export async function updateClientProfile(userId: string, formData: FormData) {
   revalidatePath(`/admin/clients/${userId}/sede`)
 }
 
-export async function updateClientSede(userId: string, formData: FormData) {
+export async function updateAdditionalSede(clientId: string, sedeId: string, formData: FormData) {
   const admin = createAdminClient()
-  const numeroSede = formData.get('numero_sede') as string
+  const numeroSede = formData.get('numero') as string
   const provincia = formData.get('provincia') as string
   const comune = formData.get('comune') as string
   const indirizzo = formData.get('indirizzo') as string
-  const isEdile = formData.get('is_edile') === 'true'
-  const letteraIdentificativa = (formData.get('lettera_identificativa') as string)?.toUpperCase()?.trim() || null
-
-  const cap = formData.get('cap') as string
   const civico = formData.get('civico') as string
+  const dataSantoPatrono = formData.get('data_santo_patrono') as string || getPatronoByComune(comune)
 
   const { error } = await admin
     .from('sedi')
@@ -141,23 +142,17 @@ export async function updateClientSede(userId: string, formData: FormData) {
       provincia,
       comune,
       indirizzo,
-      cap,
       civico,
-      is_edile: isEdile,
-      lettera_identificativa: letteraIdentificativa,
-      updated_at: new Date().toISOString()
+      data_santo_patrono: dataSantoPatrono,
     })
-    .eq('id', userId)
+    .eq('id', sedeId)
 
   if (error) {
+    console.error('Update Additional Sede Error:', error)
     throw new Error(error.message)
   }
 
-  revalidatePath('/admin/clients')
-  revalidatePath(`/admin/clients/${userId}/sede`)
-  // Redirect back to client list or specific page to give feedback
-  const { redirect } = await import('next/navigation')
-  redirect('/admin/clients')
+  revalidatePath(`/admin/clients/${clientId}/sede`)
 }
 
 export async function addAdditionalSede(clientId: string, formData: FormData) {
@@ -169,8 +164,8 @@ export async function addAdditionalSede(clientId: string, formData: FormData) {
     provincia: formData.get('provincia') as string,
     comune: formData.get('comune') as string,
     indirizzo: formData.get('indirizzo') as string,
-    cap: formData.get('cap') as string,
-    civico: formData.get('civico') as string
+    civico: formData.get('civico') as string,
+    data_santo_patrono: formData.get('data_santo_patrono') as string || getPatronoByComune(formData.get('comune') as string)
   }
 
   const { error } = await admin

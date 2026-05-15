@@ -30,7 +30,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <div className="fixed top-2 left-2 z-50 text-xs font-mono text-zinc-600 select-none pointer-events-none">
-          v1.0.46
+          v1.0.47
         </div>
         <LoadingProvider>
           {children}

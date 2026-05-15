@@ -235,7 +235,7 @@ export async function submitDNL(payload: SubmitDNLPayload) {
     try {
       await resend.emails.send({
         from: 'AI2 Servizi Clienti <noreply@ai2serviziclienti.it>',
-        to: ['gis.cantieri@gmail.com'],
+        to: [process.env.ADMIN_EMAIL || 'paoletti@agenziaitalia2.it'],
         subject: `DNL - [${autoCode}] - ${clientName.split('@')[0].toUpperCase()}`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">

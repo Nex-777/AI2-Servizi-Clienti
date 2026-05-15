@@ -37,7 +37,7 @@ export default async function DashboardPage({
   const admin = createAdminClient()
   const { data: targetProfile } = await admin
     .from('profiles')
-    .select('id, role, provincia, comune, indirizzo, numero_sede, email, is_edile, ragione_sociale')
+    .select('id, role, provincia, comune, indirizzo, numero_sede, email, is_edile, ragione_sociale, data_santo_patrono')
     .eq('id', effectiveUserId)
     .single()
 
@@ -165,7 +165,7 @@ export default async function DashboardPage({
   // 5d. Fetch all operative locations (sedi)
   const { data: additionalSedi } = await admin
     .from('sedi')
-    .select('*')
+    .select('*, data_santo_patrono')
     .eq('client_id', effectiveUserId)
     .order('numero', { ascending: true })
 

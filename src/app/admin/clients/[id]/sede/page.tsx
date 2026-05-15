@@ -3,9 +3,10 @@ import { createAdminClient } from '@/utils/supabase/admin'
 import { redirect, notFound } from 'next/navigation'
 import { ArrowLeft, Building2, Save, MapPin, Info, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { updateClientProfile, updateClientSede, addAdditionalSede, deleteAdditionalSede } from '../../actions'
+import { updateClientProfile, updateAdditionalSede, addAdditionalSede, deleteAdditionalSede } from '../../actions'
 import SedeForm from './SedeForm'
 import AddSedeForm from './AddSedeForm'
+import SedeItem from './SedeItem'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,66 +73,63 @@ export default async function AdminClientSedePage({
           </div>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className="grid gap-8 lg:grid-cols-2 items-start">
           {/* MAIN SEDE (Sede 1 / Legale) */}
-          <div className="space-y-6">
+          <div className="space-y-6 lg:sticky lg:top-8">
             <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm h-fit">
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
                 <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 text-xs font-bold italic">Main</span>
-                Anagrafica e Sede Principale
+                Sede Principale (N° 1)
               </h2>
 
               <SedeForm key={client.updated_at || id} id={id} client={client} />
             </div>
 
-            <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex gap-4 items-start">
-              <Info className="h-6 w-6 text-amber-600 shrink-0" />
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-amber-900">Nota per l'amministratore</p>
-                <p className="text-xs text-amber-800 leading-relaxed">
-                  Puoi definire più sedi operative per lo stesso cliente. Ciascuna sede deve essere identificata da un numero univoco (es. 1, 2, 3...). 
-                  L'utente vedrà l'elenco completo nella sua area riservata.
-                </p>
+            <div className="p-6 bg-slate-900 rounded-3xl text-white shadow-xl shadow-slate-200">
+              <div className="flex gap-4 items-start">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <Info className="h-5 w-5 text-white" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-bold">Gestione Multi-Sede</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Le sedi aggiuntive (2, 3, 4...) permettono al cliente di gestire fogli presenza separati per ciascuna unità operativa.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* ADDITIONAL SEDI */}
+          {/* ADDITIONAL SEDI LIST & ADD FORM */}
           <div className="space-y-6">
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm h-fit">
-              <h2 className="text-lg font-bold mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
-                <Plus className="h-5 w-5 text-blue-600" />
-                Aggiungi Altra Sede
-              </h2>
-
-              <AddSedeForm clientId={id} />
+            <div className="flex items-center justify-between mb-2 px-2">
+               <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">
+                 Altre Sedi Operative ({additionalSedi?.length || 0})
+               </h3>
             </div>
 
             {/* ADDITIONAL SEDI LIST */}
             <div className="space-y-4">
               {additionalSedi?.map((sede) => (
-                <div key={sede.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex justify-between items-center group">
-                  <div className="flex gap-4 items-center">
-                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 font-bold group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                      {sede.numero}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900">{sede.comune} ({sede.provincia})</h4>
-                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <MapPin className="h-3 w-3" /> {sede.indirizzo}
-                      </p>
-                    </div>
-                  </div>
-                  <form action={async () => {
-                    'use server'
-                    await deleteAdditionalSede(id, sede.id)
-                  }}>
-                    <button type="submit" className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </form>
-                </div>
+                <SedeItem key={sede.id} clientId={id} sede={sede} />
               ))}
+
+              {(!additionalSedi || additionalSedi.length === 0) && (
+                <div className="py-12 bg-slate-50 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center justify-center text-slate-400 gap-3">
+                  <MapPin className="h-8 w-8 opacity-20" />
+                  <p className="text-sm font-medium">Nessuna sede operativa aggiuntiva</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4">
+              <AddSedeForm 
+                clientId={id} 
+                nextNumero={additionalSedi && additionalSedi.length > 0 
+                  ? Math.max(...additionalSedi.map(s => parseInt(s.numero) || 0)) + 1 
+                  : 2
+                } 
+              />
             </div>
           </div>
         </div>

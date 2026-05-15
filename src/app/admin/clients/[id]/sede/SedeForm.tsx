@@ -112,6 +112,18 @@ export default function SedeForm({ id, client }: SedeFormProps) {
               placeholder="Es: Z"
             />
           </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Data Santo Patrono (DD-MM)</label>
+            <input 
+              name="data_santo_patrono" 
+              type="text" 
+              defaultValue={client.data_santo_patrono || ''}
+              placeholder="Es: 05-08"
+              className="w-full max-w-[120px] rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all text-center" 
+            />
+            <p className="text-[10px] text-slate-400 mt-1 ml-1">Formato: Giorno-Mese (es. 05-08)</p>
+          </div>
         </div>
       </div>
 
