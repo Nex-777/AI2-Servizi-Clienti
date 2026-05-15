@@ -6,7 +6,7 @@ import { ChevronDown, CheckCircle, Send, Info, Trash2, Lock, Users, AlertCircle,
 import { useLoading } from '@/components/LoadingProvider'
 
 import { saveCausale, confirmAndSend, clearCausaleRow, saveGiornata, reopenFoglio } from '@/app/actions/confirm'
-import { exportToExcel } from '@/utils/export-utils'
+import { exportToCSV } from '@/utils/export-utils'
 
 // — Color Map: ogni codice ha la sua tavolozza coerente —
 const CAUSALE_COLORS: Record<string, { bg: string; text: string; border: string; dot: string; riepilogoBg: string; riepilogoText: string }> = {
@@ -2400,7 +2400,8 @@ function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip:
     oreAssenza: 0,
     oreGiustificateTotali: 0,
     causali: {} as Record<string, number>,
-    kmSummary: ALL_KM_CODES.reduce((acc, code) => ({ ...acc, [code]: 0 }), {} as Record<string, number>)
+    kmSummary: ALL_KM_CODES.reduce((acc, code) => ({ ...acc, [code]: 0 }), {} as Record<string, number>),
+    cantiereSummary: {} as Record<string, { days: number, hours: number, name?: string }>
   }
 
   days.forEach(d => {
@@ -2443,11 +2444,17 @@ function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip:
     
     summary.oreAssenza += oreAssenzaGisDay
 
-    // KM Aggregation
+    // Aggregazione per Cantiere e KM
     if (workedEffective > 0 && g?.turno) {
       const cInfo = (cantieri || []).find(c => (c.cod || c.cantiere) === g.turno)
       const kmCode = getKMCode(cInfo?.distanza_km)
       summary.kmSummary[kmCode]++
+
+      if (!summary.cantiereSummary[g.turno]) {
+        summary.cantiereSummary[g.turno] = { days: 0, hours: 0, name: cInfo?.cantiere }
+      }
+      summary.cantiereSummary[g.turno].days++
+      summary.cantiereSummary[g.turno].hours += workedEffective
     }
   })
 
@@ -2458,6 +2465,17 @@ function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip:
     const elenco = getElencoCausali(isEdile)
     const cig = CIG_OPZIONI
     return elenco.find(x => x.codice === code)?.label || cig.find(x => x.codice === code)?.label || code
+  }
+
+  const getKmDesc = (code: string) => {
+    switch (code) {
+      case '0': return 'Sede'
+      case '4800': return 'Fino a 10km'
+      case '4801': return '10 - 20km'
+      case '4802': return '20 - 30km'
+      case '4803': return 'Oltre 30km'
+      default: return ''
+    }
   }
 
   return (
@@ -2482,8 +2500,8 @@ function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip:
         </div>
         
         {/* Body */}
-        <div className="p-6 md:p-12 grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-16 overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-none">
-          {/* Left Column (Main Totals) */}
+        <div className="p-6 md:p-12 grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-16 overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-[85vh]">
+          {/* Left Column (Main Totals & Cantiere Breakdown) */}
           <div className="md:col-span-7">
             <table className="w-full">
               <thead>
@@ -2550,20 +2568,52 @@ function GisSummaryModal({ dip, anno, mese, isEdile, cantieri, onClose }: { dip:
               </tbody>
             </table>
 
+            {/* Dettaglio per Cantiere */}
+            <div className="mt-10 md:mt-12 bg-slate-50/50 rounded-[2rem] p-6 md:p-8 border border-slate-100">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Users className="h-4 w-4" /> Dettaglio per Cantiere
+              </h3>
+              <div className="space-y-4">
+                {Object.entries(summary.cantiereSummary).map(([cod, data]) => (
+                  <div key={cod} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-black text-slate-900">{cod}</span>
+                      {data.name && <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-[150px]">{data.name}</span>}
+                    </div>
+                    <div className="flex gap-4 md:gap-8">
+                      <div className="flex flex-col items-center">
+                        <span className="text-[9px] font-black text-slate-400 uppercase">Giorni</span>
+                        <span className="text-sm font-black text-slate-700">{data.days}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[9px] font-black text-slate-400 uppercase">Ore</span>
+                        <span className="text-sm font-black text-blue-600">{formatNum(data.hours)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* KM Band Summary inside Modal */}
-            <div className="mt-12 bg-slate-50/50 rounded-3xl p-8 border border-slate-100">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Trasferte KM (Giorni Lavorati)</h3>
+            <div className="mt-10 md:mt-12 bg-slate-50/50 rounded-[2rem] p-6 md:p-8 border border-slate-100">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Trasferte KM (Giorni Lavorati)</h3>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {ALL_KM_CODES.map(code => {
                   const count = summary.kmSummary[code] || 0
                   const isActive = count > 0
                   return (
-                    <div key={code} className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all ${
+                    <div key={code} className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
                       isActive ? 'bg-white border-blue-200 shadow-md shadow-blue-500/5' : 'bg-slate-50/50 border-slate-100 opacity-40'
                     }`}>
-                      <span className={`text-[10px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                      <span className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
                         {code === '0' ? 'SEDE' : code}
                       </span>
+                      {code !== '0' && (
+                        <span className="text-[8px] font-bold text-slate-400 uppercase mb-1.5 leading-none text-center">
+                          {getKmDesc(code)}
+                        </span>
+                      )}
                       <span className={`text-lg font-black ${isActive ? 'text-slate-900' : 'text-slate-300'}`}>
                         {count} <span className="text-[10px] font-bold">GG</span>
                       </span>
@@ -2854,12 +2904,12 @@ export default function FoglioPresenze({
               <span className="hidden sm:inline">STAMPA PDF</span>
             </button>
             <button
-              onClick={() => exportToExcel(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
+              onClick={() => exportToCSV(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-              title="Esporta in Excel"
+              title="Esporta in CSV (Excel)"
             >
               <Download className="h-3.5 w-3.5 text-emerald-500" />
-              <span className="hidden sm:inline">EXCEL</span>
+              <span className="hidden sm:inline">CSV</span>
             </button>
           </div>
 
@@ -3009,11 +3059,11 @@ export default function FoglioPresenze({
                   <span className="hidden sm:inline">STAMPA</span>
                 </button>
                 <button
-                  onClick={() => exportToExcel(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
+                  onClick={() => exportToCSV(azienda, sede, anno, mese, initialDipendenti, daysInMonth, cantieri)}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
                 >
                   <Download className="h-3.5 w-3.5 text-emerald-500" />
-                  <span className="hidden sm:inline">EXCEL</span>
+                  <span className="hidden sm:inline">CSV</span>
                 </button>
               </div>
             </div>
