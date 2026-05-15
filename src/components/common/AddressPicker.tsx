@@ -35,6 +35,7 @@ interface AddressPickerProps {
   className?: string;
   showCalculationWarning?: boolean;
   sedeComune?: string; // Comune della sede principale per confronto
+  sedeProvincia?: string; // Provincia della sede principale per confronto
 }
 
 export const AddressPicker: React.FC<AddressPickerProps> = ({ 
@@ -46,7 +47,8 @@ export const AddressPicker: React.FC<AddressPickerProps> = ({
   errors: manualErrors,
   className = "",
   showCalculationWarning = true,
-  sedeComune
+  sedeComune,
+  sedeProvincia
 }) => {
   const formContext = useFormContext();
   const isHookForm = !!formContext && !value;
