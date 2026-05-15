@@ -1,7 +1,7 @@
 # AI2 - Servizi Clienti | Project Wiki
 
 ## Stato del Progetto
-Versione Attuale: **v1.0.47**
+Versione Attuale: **v1.0.48**
 Ultimo Aggiornamento: 15/05/2026
 
 ## Progressi Raggiunti
@@ -10,7 +10,7 @@ Ultimo Aggiornamento: 15/05/2026
 - [x] **Gestione Sedi Addizionali**: Nuova interfaccia per la creazione e modifica di sedi secondarie con supporto a coordinate geografiche e date patrono specifiche.
 - [x] **Correzione Formato Date**: Normalizzato il formato delle date patrono a `DD-MM` per coerenza con gli standard locali.
 - [x] **Riepilogo Trasferte KM**: Integrato calcolo automatico dei giorni di trasferta suddivisi per fasce chilometriche (Sede, 10km, 20km, 30km, >30km).
-- [x] **Esportazione Excel**: Aggiunta funzionalità di download riepilogo in formato `.xlsx` per elaborazione esterna (GIS/Paghe).
+- [x] **Esportazione CSV (Excel)**: Sostituito il sistema di export Excel con un generatore CSV server-side più leggero e compatibile, con supporto ai separatori `;` e BOM UTF-8 per apertura diretta in Excel.
 - [x] **Stampa PDF Professionale**: Implementato layout di stampa ottimizzato (A4 Landscape) che nasconde gli elementi di navigazione e formatta correttamente le tabelle per l'archiviazione cartacea.
 - [x] **Gestione Ticket INPS**: Aggiunta colonna `ticket_inps` per le fasi CIG, con supporto alla copia rapida del codice alfanumerico per l'amministratore.
 - [x] **Inizializzazione Automatica SEDE**: Migliorata l'esperienza utente compilando automaticamente la riga "Cantiere/Sede" con la sede principale o l'ultimo cantiere attivo all'apertura di un nuovo foglio vuoto.
@@ -40,6 +40,8 @@ Ultimo Aggiornamento: 15/05/2026
 - [x] **Campi Note Giustificativi**: Implementata casella descrittiva per il giustificativo `GEN` (Generale). Aggiunto indicatore visivo (pallino ambra) nelle celle che contengono una nota, visibile anche al passaggio del mouse.
 - [x] **Vercel Build Stabilization**: Configurato `next.config.ts` per ignorare errori lint/TS durante la build, garantendo il deploy immediato mentre si procede alla pulizia del debito tecnico (causali `any`).
 - [x] **Integrazione GitHub**: Sincronizzazione workspace locale con repository remota completata con successo.
+- [x] **Dettaglio per Cantiere**: Aggiunta sezione analitica nel Riepilogo GIS che mostra il breakdown di giorni e ore lavorate per ogni singolo cantiere frequentato dal dipendente.
+- [x] **Etichette Fasce KM**: Inserite descrizioni testuali (es. "Fino a 10km", "10-20km") sotto i codici ministeriali nel riepilogo KM per una consultazione più immediata.
 
 ## Task Pendenti (Prossima Sessione)
 - [ ] **Miglioramento UI Periodo**: Valutare se aggiungere un'anteprima dei giorni che verranno compilati nel range selezionato.
